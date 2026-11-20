@@ -41,9 +41,21 @@ def new_figure(width=6, height=4):
     return fig, ax
 
 
-def histogram(series, bins="auto"):
+def histogram(series, bins="auto", normal_curve=True):
+    """히스토그램. normal_curve=True면 같은 평균·표준편차의 정규분포 곡선을 겹쳐 그립니다."""
+    import numpy as np
+    from scipy import stats
+
+    x = series.dropna()
     fig, ax = new_figure()
-    ax.hist(series.dropna(), bins=bins, color=PRIMARY, edgecolor="white")
+    counts, edges, _ = ax.hist(x, bins=bins, color=PRIMARY, edgecolor="white", label="관측값")
+    if normal_curve and len(x) >= 3 and x.std(ddof=1) > 0:
+        grid = np.linspace(edges[0], edges[-1], 200)
+        width = edges[1] - edges[0]
+        # 정규분포 밀도 × 표본 수 × 구간 폭 = 히스토그램과 같은 '빈도' 눈금으로 맞춤
+        ax.plot(grid, stats.norm.pdf(grid, x.mean(), x.std(ddof=1)) * len(x) * width,
+                color="#E07B39", linewidth=2, label="정규분포 (같은 평균·표준편차)")
+        ax.legend(frameon=False, fontsize=8)
     ax.set_title(f"{series.name} 히스토그램")
     ax.set_xlabel(str(series.name))
     ax.set_ylabel("빈도")

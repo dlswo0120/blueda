@@ -133,3 +133,49 @@ def test_export_excel_and_csv(sample_df, cfg, tmp_path):
     assert len(csvs) >= 2
     numeric_csv = next(p for p in csvs if "수치형" in p)
     assert "평균" in open(numeric_csv, encoding="utf-8-sig").read()
+
+
+# ---------- 변수 종류 · 분석 단위 · z점수 ----------
+def test_variable_types_detects_coded_category_and_id(cfg):
+    rng = np.random.default_rng(1)
+    df = pd.DataFrame({
+        "고객ID": np.arange(1, 101),                    # 모두 다른 정수 → ID 후보
+        "성별코드": rng.choice([1, 2], 100),             # 숫자지만 범주
+        "매출": rng.normal(100, 10, 100),                # 수치형
+        "가입일": pd.date_range("2025-01-01", periods=100).astype(str),  # 문자열 날짜
+        "지역": rng.choice(["서울", "부산"], 100),
+    })
+    bd = Blueda(df, cfg)
+    t = bd.variable_types().tables["변수 종류"]["판정"]
+    assert t["고객ID"] == "ID 후보" and t["성별코드"] == "범주형"
+    assert t["매출"] == "수치형" and t["가입일"] == "날짜" and t["지역"] == "범주형"
+
+
+def test_override_changes_describe(cfg):
+    df = pd.DataFrame({"코드": [1, 2, 1, 2, 3, 1] * 5, "값": np.arange(30.0)})
+    bd = Blueda(df, cfg)
+    bd.set_variable_type("코드", "범주형")
+    num, cat = bd.describe(with_charts=False)
+    assert "코드" not in num.tables["수치형 요약"].index      # 평균을 내지 않음
+    assert "코드" in cat.tables["범주형 요약"].index           # 빈도로 요약
+
+
+def test_analysis_unit(cfg):
+    df = pd.DataFrame({"고객ID": [1, 1, 2, 3], "주문번호": [10, 11, 12, 13]})
+    bd = Blueda(df, cfg)
+    r = bd.analysis_unit("고객ID", "고객")
+    assert r.metrics["겹치는 행"] == 2 and r.metrics["한 단위 최대 행 수"] == 2
+    assert bd.analysis_unit("주문번호", "주문").metrics["겹치는 행"] == 0
+
+
+def test_zscore_flags_extreme_value(cfg):
+    df = pd.DataFrame({"x": [10.0] * 20 + [11.0] * 20 + [100.0]})
+    r = Blueda(df, cfg).zscore(threshold=3)
+    assert r.metrics["후보 행 수"] == 1
+    z = r.tables["z점수 전체"]["x"]
+    assert np.isclose(z.mean(), 0, atol=1e-3)                   # z점수 평균은 0
+
+
+def test_histogram_has_normal_curve(sample_df, cfg):
+    fig = Blueda(sample_df, cfg).describe("numeric")[0].figures["매출 히스토그램"]
+    assert len(fig.axes[0].lines) == 1                         # 정규분포 곡선 1개

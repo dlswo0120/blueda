@@ -21,18 +21,54 @@ ESTIMATOR_NOTE = (
 )
 
 
-def _numeric_cols(df):
-    return df.select_dtypes(include="number").columns.tolist()
+def _numeric_cols(df, var_types=None):
+    """수치형 열. 사용자가 범주형·ID로 지정한 숫자 열은 뺍니다."""
+    var_types = var_types or {}
+    cols = df.select_dtypes(include="number").columns.tolist()
+    return [c for c in cols if var_types.get(c, "수치형") == "수치형"]
 
 
-def _categorical_cols(df, max_unique=50):
-    """문자열·범주·불리언 열 + 고유값이 적은 열을 범주형으로 봅니다."""
+def _categorical_cols(df, max_unique=50, var_types=None):
+    """문자열·범주·불리언 열 + 사용자가 범주형으로 지정한 숫자 열."""
+    var_types = var_types or {}
     cols = df.select_dtypes(include=["object", "string", "category", "bool"]).columns.tolist()
+    cols = [c for c in cols if var_types.get(c, "범주형") == "범주형"]
+    cols += [c for c, k in var_types.items() if k == "범주형" and c in df.columns and c not in cols]
     return [c for c in cols if df[c].nunique(dropna=True) <= max_unique]
 
 
-def describe_numeric(df, with_charts=True, iqr_k=1.5):
-    cols = _numeric_cols(df)
+def zscores(df, threshold=3.0, var_types=None):
+    """z점수 = (값 − 평균) ÷ 표준편차. |z|가 기준보다 큰 값을 이상값 후보로 표시합니다."""
+    cols = _numeric_cols(df, var_types)
+    code = f'''# [목적] z점수로 표준화하고 평균에서 멀리 떨어진 값 찾기
+num = sub.select_dtypes(include="number")
+z = (num - num.mean()) / num.std(ddof=1)     # z점수: 평균 0, 표준편차 1로 바꾼 값
+flag = z.abs() > {threshold}                  # |z| > {threshold}: 이상값 후보 (관례 기준)
+print(flag.sum())                             # 열별 이상값 후보 개수
+print(sub[flag.any(axis=1)])                  # 이상값 후보가 있는 행'''
+    if not cols:
+        return AnalysisResult("z점수", FAIL, "분석 범위에 수치형 열이 없습니다.", code=code)
+    num = df[cols]
+    z = (num - num.mean()) / num.std(ddof=1)
+    flag = z.abs() > threshold
+    counts = flag.sum()
+    flagged = df[flag.any(axis=1)].copy()
+    for c in cols:
+        flagged[f"{c}_z"] = z.loc[flagged.index, c].round(3)
+    summary = pd.DataFrame({"평균": num.mean(), "표준편차": num.std(ddof=1),
+                            f"|z|>{threshold} 개수": counts, "최대 |z|": z.abs().max()}).round(4)
+    return AnalysisResult(
+        "z점수", SUCCESS, f"|z| > {threshold} 이상값 후보 {int(flag.any(axis=1).sum())}행",
+        metrics={"기준": f"|z| > {threshold}", "후보 행 수": int(flag.any(axis=1).sum())},
+        tables={"z점수 요약": summary, "이상값 후보 행": flagged.head(200), "z점수 전체": z.round(4)},
+        notes=[f"|z| > {threshold}는 관례적 기준입니다. 분포가 치우쳐 있으면 IQR 기준(박스플롯)도 함께 보세요.",
+               "z점수는 정규분포에 가까울 때 해석이 자연스럽습니다 (|z|>3 비율 ≈ 0.27%)."],
+        code=code,
+    )
+
+
+def describe_numeric(df, with_charts=True, iqr_k=1.5, var_types=None):
+    cols = _numeric_cols(df, var_types)
     code = '''# [목적] 수치형 열의 분포 요약
 num = sub.select_dtypes(include="number")
 summary = pd.DataFrame({
@@ -73,8 +109,8 @@ print(summary)'''
     )
 
 
-def describe_categorical(df, with_charts=True, top_n=20, max_unique=50):
-    cols = _categorical_cols(df, max_unique)
+def describe_categorical(df, with_charts=True, top_n=20, max_unique=50, var_types=None):
+    cols = _categorical_cols(df, max_unique, var_types)
     code = f'''# [목적] 범주형 열의 빈도·비율·최빈값
 for col in sub.select_dtypes(include=["object", "string", "category", "bool"]):
     counts = sub[col].value_counts(dropna=False)          # 값별 빈도 (결측 포함)

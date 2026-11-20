@@ -26,8 +26,13 @@ bd = Blueda.from_file("data/sample_cp949.csv")
 # 2. 분석 범위 지정: 30세 이상, 지역·매출·등급 열만
 bd.set_scope(columns=["지역", "매출", "등급"], query="나이 >= 30")
 
-# 3. 기술통계 (수치형 + 범주형 + 차트)
+# 3. 데이터 이해: 변수 종류, 분석 단위
+bd.variable_types()
+bd.analysis_unit(["지역", "나이"], "지역·나이 조합")   # 한 행이 하나의 조합인지 확인
+
+# 4. 기술통계 (수치형 + 범주형 + 차트) + z점수
 bd.describe()
+bd.zscore(threshold=3)
 
 # 4. 아직 없는 기능 요청 → 알림 + 업데이트 요청 기록
 print(bd.request("anova", "지역별 매출 평균 차이 검정"))

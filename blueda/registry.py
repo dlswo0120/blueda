@@ -17,8 +17,13 @@ AVAILABLE, PLANNED = "available", "planned"
 
 # key: (학습 영역, 이름, 상태, 예정 단계, 필요한 기능, 필요한 학습 내용)
 CAPABILITIES = {
+    # 0) 데이터 이해
+    "variable_types":       ("데이터 이해", "변수 종류 판정 (수치형·범주형·날짜·ID)", AVAILABLE, 1, "", ""),
+    "analysis_unit":        ("데이터 이해", "분석 단위 확인 (한 행이 무엇인지)", AVAILABLE, 1, "", ""),
     # 1) 기술통계
-    "describe_numeric":     ("기술통계", "수치형 요약 (평균·중앙값·표준편차)", AVAILABLE, 1, "", ""),
+    "zscore":               ("기술통계", "z점수 표준화·이상값 후보", AVAILABLE, 1, "", ""),
+    "normal_curve":         ("기술통계", "정규분포 곡선 비교 (히스토그램 겹쳐 그리기)", AVAILABLE, 1, "", ""),
+    "describe_numeric":    ("기술통계", "수치형 요약 (평균·중앙값·표준편차)", AVAILABLE, 1, "", ""),
     "describe_categorical": ("기술통계", "범주형 요약 (빈도·비율·최빈값)", AVAILABLE, 1, "", ""),
     "histogram":            ("기술통계", "히스토그램", AVAILABLE, 1, "", ""),
     "boxplot":              ("기술통계", "박스플롯", AVAILABLE, 1, "", ""),

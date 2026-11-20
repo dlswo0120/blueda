@@ -8,7 +8,7 @@ from .preprocess_check import check_preprocessing, format_report
 from .reproducibility import record_environment, save_environment, set_seed
 from .source_check import SourceInfo, review_source, source_markdown
 from .stat_checks import run_stat_checks
-from . import descriptive, export, registry
+from . import descriptive, export, registry, variables
 from .loader import load_file
 from .result import FAIL, AnalysisResult
 from .scope import AnalysisScope
@@ -32,6 +32,7 @@ class Blueda:
         self.report = None
         self.file_info = None
         self.scope = AnalysisScope()      # 분석 범위 (기본: 전체)
+        self.var_types = {}               # 사용자가 직접 지정한 변수 종류 (열 → 수치형/범주형/...)
         self.results = []                 # 결과 세션: 실행한 분석 결과가 순서대로 쌓임
         set_seed(self.config.random_seed)  # C: 시작할 때 시드 고정
 
@@ -97,10 +98,34 @@ print(df.head())                                    # 앞 5행 미리보기'''
         out = []
         if kind in ("numeric", "all"):
             out.append(self._run(descriptive.describe_numeric, with_charts=with_charts,
-                                 iqr_k=self.config.outlier_iqr_k))
+                                 iqr_k=self.config.outlier_iqr_k, var_types=self.var_types))
         if kind in ("categorical", "all"):
-            out.append(self._run(descriptive.describe_categorical, with_charts=with_charts))
+            out.append(self._run(descriptive.describe_categorical, with_charts=with_charts,
+                                 var_types=self.var_types))
         return out
+
+    # ---------- 변수 종류 · 분석 단위 · z점수 ----------
+    def variable_types(self):
+        """열마다 수치형/범주형/날짜/ID 후보/텍스트를 판정합니다."""
+        return self._run(variables.variable_types, overrides=self.var_types)
+
+    def set_variable_type(self, column, kind):
+        """자동 판정이 틀렸을 때 직접 지정합니다. 예: set_variable_type("성별코드", "범주형")"""
+        if kind not in variables.KINDS:
+            raise ValueError(f"kind는 {variables.KINDS} 중 하나여야 합니다.")
+        if column not in self.df.columns:
+            raise KeyError(column)
+        self.var_types[column] = kind
+        print(f"[BLUEDA] '{column}' → {kind}로 지정")
+
+    def analysis_unit(self, key_columns, unit_name=""):
+        """한 행이 무엇인지(예: 고객 1명) 정하고, 기준 열에 중복이 없는지 확인합니다."""
+        if isinstance(key_columns, str):
+            key_columns = [key_columns]
+        return self._run(variables.check_analysis_unit, key_columns=key_columns, unit_name=unit_name)
+
+    def zscore(self, threshold=3.0):
+        return self._run(descriptive.zscores, threshold=threshold, var_types=self.var_types)
 
     # ---------- 기능 레지스트리 ----------
     def request(self, key, user_text=""):
@@ -109,6 +134,12 @@ print(df.head())                                    # 앞 5행 미리보기'''
                   "histogram": ("numeric",), "boxplot": ("numeric",)}
         if registry.is_available(key) and key in simple:
             return self.describe(*simple[key])
+        if registry.is_available(key) and key in ("variable_types", "zscore", "normal_curve"):
+            return self.variable_types() if key == "variable_types" else (
+                self.zscore() if key == "zscore" else self.describe("numeric"))
+        if key == "analysis_unit":
+            return self._record(AnalysisResult("분석 단위 확인", FAIL,
+                                               "기준 열이 필요합니다. 예: analysis_unit(['고객ID'], '고객')"))
         if registry.is_available(key) and key == "correlation":
             from .stat_checks import correlation_result
             return self._run(correlation_result)
