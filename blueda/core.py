@@ -8,6 +8,10 @@ from .preprocess_check import check_preprocessing, format_report
 from .reproducibility import record_environment, save_environment, set_seed
 from .source_check import SourceInfo, review_source, source_markdown
 from .stat_checks import run_stat_checks
+from . import descriptive, export, registry
+from .loader import load_file
+from .result import FAIL, AnalysisResult
+from .scope import AnalysisScope
 
 
 class Blueda:
@@ -26,6 +30,9 @@ class Blueda:
         self.log = AnalysisLogger(self.config.log_dir, self.config.print_code, session_name)
         self.source = None
         self.report = None
+        self.file_info = None
+        self.scope = AnalysisScope()      # 분석 범위 (기본: 전체)
+        self.results = []                 # 결과 세션: 실행한 분석 결과가 순서대로 쌓임
         set_seed(self.config.random_seed)  # C: 시작할 때 시드 고정
 
     @classmethod
@@ -40,6 +47,89 @@ print(df.shape)                                     # (행 수, 열 수)
 print(df.head())                                    # 앞 5행 미리보기'''
         bd.log.log("데이터 불러오기", code, f"{df.shape}\n{df.head()}", "")
         return bd
+
+    @classmethod
+    def from_file(cls, path, sheet=None, config=None):
+        """형식을 자동 판별해서 불러옵니다 (CSV, Excel). Word·PDF는 형식만 판별하고 알림."""
+        info, df, code = load_file(path, sheet)
+        if df is None:
+            print(f"[BLUEDA] {info.summary()}")
+            print(f"[UNSUPPORTED] {info.detail}")
+            return None
+        bd = cls(df, config=config, data_path=path)
+        bd.file_info = info
+        print(f"[BLUEDA] {info.summary()} · {df.shape[0]:,}행 × {df.shape[1]}열")
+        bd.log.log("데이터 불러오기", code, f"{df.shape}", info.summary())
+        return bd
+
+    # ---------- 분석 범위 ----------
+    def set_scope(self, columns=None, query="", row_start=None, row_end=None, dropna=False):
+        self.scope = AnalysisScope(columns or [], query, row_start, row_end, dropna)
+        sub, _ = self.scope.apply(self.df)  # 잘못된 열 이름이면 여기서 바로 에러
+        print(f"[BLUEDA] 분석 범위: {self.scope.describe()} → {len(sub):,}행 × {sub.shape[1]}열")
+        return sub
+
+    def scoped(self):
+        sub, _ = self.scope.apply(self.df)
+        return sub
+
+    # ---------- 결과 세션 ----------
+    def _record(self, result, scope_code=""):
+        """결과를 세션에 쌓고, 결과 줄을 출력하고, 코드를 로그에 남깁니다."""
+        self.results.append(result)
+        print(result.session_line())
+        if result.code:
+            code = f"{scope_code}\n\n{result.code}" if scope_code else result.code
+            first_table = next(iter(result.tables.values()), "")
+            self.log.log(result.name, code, first_table, result.message)
+        return result
+
+    def _run(self, func, **kwargs):
+        try:
+            sub, scope_code = self.scope.apply(self.df)
+            return self._record(func(sub, **kwargs), scope_code)
+        except Exception as e:  # 실패해도 툴이 멈추지 않고 FAIL로 기록
+            return self._record(AnalysisResult(getattr(func, "__name__", "분석"), FAIL, f"{type(e).__name__}: {e}"))
+
+    # ---------- 1) 기술통계 ----------
+    def describe(self, kind="all", with_charts=True):
+        """kind: 'numeric' / 'categorical' / 'all'"""
+        out = []
+        if kind in ("numeric", "all"):
+            out.append(self._run(descriptive.describe_numeric, with_charts=with_charts,
+                                 iqr_k=self.config.outlier_iqr_k))
+        if kind in ("categorical", "all"):
+            out.append(self._run(descriptive.describe_categorical, with_charts=with_charts))
+        return out
+
+    # ---------- 기능 레지스트리 ----------
+    def request(self, key, user_text=""):
+        """기능 이름(key)으로 분석을 요청합니다. 없는 기능이면 알림 + 업데이트 요청 기록."""
+        simple = {"describe_numeric": ("numeric",), "describe_categorical": ("categorical",),
+                  "histogram": ("numeric",), "boxplot": ("numeric",)}
+        if registry.is_available(key) and key in simple:
+            return self.describe(*simple[key])
+        if registry.is_available(key) and key == "correlation":
+            from .stat_checks import correlation_result
+            return self._run(correlation_result)
+        return self._record(registry.unsupported_notice(key, self.config.log_dir, user_text))
+
+    @staticmethod
+    def capabilities(status=None):
+        return pd.DataFrame(registry.list_capabilities(status))
+
+    # ---------- 내보내기 ----------
+    def export_csv(self, out_dir=None):
+        out_dir = out_dir or f"{self.config.log_dir}/export_{self.log.session_name}"
+        paths = export.to_csv(self.results, out_dir)
+        print(f"[BLUEDA] CSV {len(paths)}개 저장: {out_dir}")
+        return paths
+
+    def export_excel(self, path=None, include_charts=True):
+        path = path or f"{self.config.log_dir}/result_{self.log.session_name}.xlsx"
+        export.to_excel(self.results, path, include_charts)
+        print(f"[BLUEDA] Excel 저장: {path}")
+        return path
 
     # ---------- A ----------
     def check(self):

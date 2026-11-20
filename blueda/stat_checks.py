@@ -28,8 +28,9 @@ for col in {columns!r}:
     for col in columns:
         x = df[col].dropna()
         if len(x) < 3:
-            rows.append((col, None, None, "표본 부족"))
+            rows.append((col, None, None, "표본 부족 (Shapiro 최소 3개)"))
             continue
+        # normaltest(D'Agostino)는 최소 8개가 필요하지만, 여기서는 5000개 초과일 때만 쓰므로 해당 없음
         test = "Shapiro-Wilk" if len(x) <= 5000 else "D'Agostino K²"
         _, p = stats.shapiro(x) if len(x) <= 5000 else stats.normaltest(x)
         rows.append((col, test, round(float(p), 4), "정규성 위배" if p < ALPHA else "정규성 가정 가능"))
@@ -42,7 +43,7 @@ def equal_variance(df, columns, group_col):
 from scipy import stats
 for col in {columns!r}:
     groups = [g[col].dropna() for _, g in df.groupby({group_col!r})]  # 그룹별로 값 나누기
-    stat, p = stats.levene(*groups)       # Levene 검정: 정규성이 약해도 비교적 안정적
+    stat, p = stats.levene(*groups)       # SciPy 기본 center='median' → Brown-Forsythe 검정 (정규성이 약해도 안정적)
     print(col, round(p, 4), "등분산 아님" if p < {ALPHA} else "등분산 가정 가능")'''
     rows = []
     for col in columns:
@@ -54,7 +55,7 @@ for col in {columns!r}:
         _, p = stats.levene(*groups)
         rows.append((col, round(float(p), 4), "등분산 아님" if p < ALPHA else "등분산 가정 가능"))
     result = pd.DataFrame(rows, columns=["column", "p_value", "판단"])
-    return "등분산 검정", code, result
+    return "등분산 검정 (Levene, center=median = Brown-Forsythe)", code, result
 
 
 def correlation(df, columns):
@@ -69,6 +70,21 @@ print(spearman.round(3))'''
     spearman = sub.corr(method="spearman").round(3)
     result = f"[Pearson]\n{pearson}\n\n[Spearman]\n{spearman}"
     return "상관 분석", code, result
+
+
+def correlation_result(df):
+    """분석 범위 안의 수치형 열로 상관분석을 하고 AnalysisResult로 돌려줍니다."""
+    from .result import FAIL, SUCCESS, AnalysisResult
+    cols = df.select_dtypes(include="number").columns.tolist()
+    if len(cols) < 2:
+        return AnalysisResult("상관분석", FAIL, f"수치형 열이 2개 이상 필요합니다 (현재 {len(cols)}개).")
+    _, code, _ = correlation(df, cols)
+    sub = df[cols]
+    return AnalysisResult(
+        "상관분석", SUCCESS, f"수치형 {len(cols)}개 열 상관계수 계산 완료",
+        tables={"Pearson 상관": sub.corr("pearson").round(3), "Spearman 상관": sub.corr("spearman").round(3)},
+        notes=[CAUSATION_NOTE], code=code,
+    )
 
 
 CAUSATION_NOTE = (
