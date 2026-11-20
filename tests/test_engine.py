@@ -103,10 +103,10 @@ def test_charts_created(sample_df, cfg):
 # ---------- 레지스트리 ----------
 def test_unsupported_request_logged(sample_df, cfg, tmp_path):
     bd = Blueda(sample_df, cfg)
-    r = bd.request("anova", "지역별 매출 차이")
+    r = bd.request("logistic_regression", "구매 여부 예측")
     assert r.status == UNSUPPORTED and "필요 학습" in r.metrics
     log = (tmp_path / "logs" / "update_requests.csv").read_text(encoding="utf-8-sig")
-    assert "anova" in log and "지역별 매출 차이" in log
+    assert "logistic_regression" in log and "구매 여부 예측" in log
 
 
 def test_unknown_request_logged(sample_df, cfg):

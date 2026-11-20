@@ -8,7 +8,7 @@ from .preprocess_check import check_preprocessing, format_report
 from .reproducibility import record_environment, save_environment, set_seed
 from .source_check import SourceInfo, review_source, source_markdown
 from .stat_checks import run_stat_checks
-from . import descriptive, export, registry, variables
+from . import bivariate, descriptive, export, inferential, multivariate, registry, variables
 from .loader import load_file
 from .result import FAIL, AnalysisResult
 from .scope import AnalysisScope
@@ -127,9 +127,64 @@ print(df.head())                                    # 앞 5행 미리보기'''
     def zscore(self, threshold=3.0):
         return self._run(descriptive.zscores, threshold=threshold, var_types=self.var_types)
 
+    # ---------- 2) 추론통계 ----------
+    def sampling_distribution(self, column, sample_size=30, n_samples=1000):
+        return self._run(inferential.sampling_distribution, column=column, sample_size=sample_size,
+                         n_samples=n_samples, seed=self.config.random_seed)
+
+    def confidence_interval(self, column, level=0.95, category=None):
+        """수치형 열이면 평균의 신뢰구간, category를 주면 그 범주 비율의 신뢰구간."""
+        if category is not None:
+            return self._run(inferential.confidence_interval_proportion, column=column, category=category, level=level)
+        return self._run(inferential.confidence_interval_mean, column=column, level=level)
+
+    def one_sample_ttest(self, column, mu0, alternative="two-sided"):
+        return self._run(inferential.one_sample_ttest, column=column, mu0=mu0,
+                         alpha=self.config.alpha, alternative=alternative)
+
+    # ---------- 3) 이변량 ----------
+    def t_test(self, group_col, value_col, groups=None, method="auto", alternative="two-sided"):
+        return self._run(bivariate.t_test, group_col=group_col, value_col=value_col, groups=groups,
+                         alpha=self.config.alpha, method=method, alternative=alternative)
+
+    def anova(self, group_col, value_col, posthoc=True):
+        return self._run(bivariate.anova, group_col=group_col, value_col=value_col,
+                         alpha=self.config.alpha, posthoc=posthoc)
+
+    def chi_square(self, row_col, col_col):
+        return self._run(bivariate.chi_square, row_col=row_col, col_col=col_col, alpha=self.config.alpha)
+
+    def correlation_test(self, x, y):
+        return self._run(bivariate.correlation_test, x=x, y=y, alpha=self.config.alpha)
+
+    def simple_regression(self, x, y):
+        return self._run(bivariate.simple_regression, x=x, y=y, alpha=self.config.alpha)
+
+    # ---------- 4) 다변량 ----------
+    def multiple_regression(self, y, xs, standardize=False):
+        return self._run(multivariate.multiple_regression, y=y, xs=list(xs),
+                         alpha=self.config.alpha, standardize=standardize)
+
     # ---------- 기능 레지스트리 ----------
-    def request(self, key, user_text=""):
-        """기능 이름(key)으로 분석을 요청합니다. 없는 기능이면 알림 + 업데이트 요청 기록."""
+    def request(self, key, user_text="", **params):
+        """기능 이름(key)으로 분석을 요청합니다. 없는 기능이면 알림 + 업데이트 요청 기록.
+
+        예: request("t_test", group_col="성별", value_col="매출")
+        """
+        methods = {"sampling_distribution": self.sampling_distribution,
+                   "confidence_interval": self.confidence_interval,
+                   "one_sample_ttest": self.one_sample_ttest, "t_test": self.t_test, "anova": self.anova,
+                   "chi_square": self.chi_square, "correlation_test": self.correlation_test,
+                   "simple_regression": self.simple_regression, "multiple_regression": self.multiple_regression,
+                   "analysis_unit": self.analysis_unit}
+        if registry.is_available(key) and key in methods:
+            import inspect
+            try:
+                inspect.signature(methods[key]).bind(**params)   # 필요한 값이 다 들어왔는지 먼저 확인
+            except TypeError:
+                usage = f"{key}{inspect.signature(methods[key])}"
+                return self._record(AnalysisResult(registry.get(key)[1], FAIL, f"필요한 값이 빠졌습니다. 사용법: {usage}"))
+            return methods[key](**params)
         simple = {"describe_numeric": ("numeric",), "describe_categorical": ("categorical",),
                   "histogram": ("numeric",), "boxplot": ("numeric",)}
         if registry.is_available(key) and key in simple:
@@ -137,9 +192,6 @@ print(df.head())                                    # 앞 5행 미리보기'''
         if registry.is_available(key) and key in ("variable_types", "zscore", "normal_curve"):
             return self.variable_types() if key == "variable_types" else (
                 self.zscore() if key == "zscore" else self.describe("numeric"))
-        if key == "analysis_unit":
-            return self._record(AnalysisResult("분석 단위 확인", FAIL,
-                                               "기준 열이 필요합니다. 예: analysis_unit(['고객ID'], '고객')"))
         if registry.is_available(key) and key == "correlation":
             from .stat_checks import correlation_result
             return self._run(correlation_result)

@@ -86,7 +86,7 @@ print(sub.groupby({key_columns!r}).size().max())                # 한 단위가 
     examples = df[dup_mask].sort_values(key_columns).head(20)
     return AnalysisResult(
         "분석 단위 확인", SUCCESS,
-        f"한 {unit}이(가) 여러 행에 걸쳐 있습니다 ({int(len(sizes))}개 단위, {len(df)}행).",
+        f"같은 {unit}에 여러 행이 있습니다 ({int(len(sizes))}개 단위, {len(df)}행).",
         metrics=metrics, tables={"겹치는 행 예시": examples},
         notes=[f"{unit} 단위로 분석하려면 합계·평균 등으로 묶어야 합니다 (groupby). "
                "행 단위(예: 주문 1건)가 맞다면 기준 열을 바꿔주세요."],

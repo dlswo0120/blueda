@@ -42,6 +42,27 @@ bd.export_excel()
 
 예제: `python examples/engine_demo.py`
 
+## 통계 분석 (v0.3.0, 2단계)
+
+모든 검정은 귀무가설·대립가설, p값 해석 문장, 효과 크기, 전제 조건 점검(정규성·등분산·기대빈도)을 함께 보여줍니다.
+
+| 학습 영역 | 기능 | 메서드 |
+|---|---|---|
+| 추론통계 | 표본분포 시뮬레이션 (중심극한정리, 표준오차 σ/√n 비교) | `sampling_distribution(열)` |
+| 추론통계 | 평균 신뢰구간 (t분포), 비율 신뢰구간 (Wilson) | `confidence_interval(열)`, `confidence_interval(열, category="Y")` |
+| 추론통계 | 단일표본 t검정 | `one_sample_ttest(열, mu0)` |
+| 이변량 (범주×수치) | 독립표본 t검정 (등분산 검정으로 Student/Welch 자동 선택, Cohen's d) | `t_test(그룹열, 값열)` |
+| 이변량 (범주×수치) | 일원분산분석 ANOVA (η², 유의하면 Tukey HSD 사후검정) | `anova(그룹열, 값열)` |
+| 이변량 (범주×범주) | 교차표·카이제곱 (Cramér's V, 기대빈도 부족 시 Fisher 정확검정) | `chi_square(열1, 열2)` |
+| 이변량 (수치×수치) | 상관 검정 (Pearson·Spearman + p값), 단순회귀 (잔차 그림) | `correlation_test(x, y)`, `simple_regression(x, y)` |
+| 다변량 | 다중회귀 (범주형 자동 더미, 수정 R², VIF 다중공선성) | `multiple_regression(y, [x1, x2, ...])` |
+
+유의수준은 `BluedaConfig(alpha=0.05)`에서 바꿀 수 있습니다. 결과값은 테스트에서 scipy·statsmodels로 직접 계산한 값과 대조해 검증합니다.
+
+예제: `python examples/stage2_demo.py`
+
+사용 라이브러리: pandas, NumPy, SciPy, statsmodels, Matplotlib, seaborn, openpyxl (모두 BSD 계열 또는 MIT 라이선스)
+
 ## 설치 (VS Code)
 
 1. 이 폴더를 VS Code로 엽니다. 추천 확장(Python, Jupyter) 설치 알림이 뜨면 설치합니다.

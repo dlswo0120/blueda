@@ -23,6 +23,7 @@ class BluedaConfig:
     outlier_iqr_k: float = 1.5                 # A: IQR 이상치 기준 배수 (보통 1.5)
     missing_warn_ratio: float = 0.0            # A: 이 비율을 넘는 결측 컬럼을 '전처리 필요'로 판단
     print_code: bool = True                    # B: 실행한 코드를 콘솔에도 출력할지
+    alpha: float = 0.05                        # 가설검정 유의수준 (관례 기준, 바꿀 수 있음)
 
     def __post_init__(self):
         # [목적] 잘못된 검사 이름이 들어오면 바로 알려주기

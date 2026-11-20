@@ -61,7 +61,7 @@ print(sub[flag.any(axis=1)])                  # 이상값 후보가 있는 행''
         "z점수", SUCCESS, f"|z| > {threshold} 이상값 후보 {int(flag.any(axis=1).sum())}행",
         metrics={"기준": f"|z| > {threshold}", "후보 행 수": int(flag.any(axis=1).sum())},
         tables={"z점수 요약": summary, "이상값 후보 행": flagged.head(200), "z점수 전체": z.round(4)},
-        notes=[f"|z| > {threshold}는 관례적 기준입니다. 분포가 치우쳐 있으면 IQR 기준(박스플롯)도 함께 보세요.",
+        notes=[f"|z| > {threshold} 기준은 관례입니다. 분포가 치우쳐 있으면 IQR 기준(박스플롯)도 함께 보세요.",
                "z점수는 정규분포에 가까울 때 해석이 자연스럽습니다 (|z|>3 비율 ≈ 0.27%)."],
         code=code,
     )
