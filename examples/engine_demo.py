@@ -23,24 +23,25 @@ pd.DataFrame({
 # 1. 파일 형식 자동 판별 + 불러오기
 bd = Blueda.from_file("data/sample_cp949.csv")
 
-# 2. 분석 범위 지정: 30세 이상, 지역·매출·등급 열만
-bd.set_scope(columns=["지역", "매출", "등급"], query="나이 >= 30")
-
-# 3. 데이터 이해: 변수 종류, 분석 단위
+# 2. 데이터 이해 (전체 데이터 기준): 변수 종류, 분석 단위
 bd.variable_types()
 bd.analysis_unit(["지역", "나이"], "지역·나이 조합")   # 한 행이 하나의 조합인지 확인
+
+# 3. 분석 범위 지정: 30세 이상, 지역·매출·등급 열만
+bd.set_scope(columns=["지역", "매출", "등급"], query="나이 >= 30")
 
 # 4. 기술통계 (수치형 + 범주형 + 차트) + z점수
 bd.describe()
 bd.zscore(threshold=3)
 
-# 4. 아직 없는 기능 요청 → 알림 + 업데이트 요청 기록
-print(bd.request("anova", "지역별 매출 평균 차이 검정"))
+# 5. 아직 없는 기능 요청 → 알림 + 업데이트 요청 기록
+r = bd.request("anova", "지역별 매출 평균 차이 검정")
+print("  필요 기능:", r.metrics["필요 기능"], "/ 필요 학습:", r.metrics["필요 학습"])
 
-# 5. 기능 목록 확인
+# 6. 기능 목록 확인
 print(Blueda.capabilities()[["학습영역", "기능", "상태", "예정 단계"]])
 
-# 6. 내보내기
+# 7. 내보내기
 bd.export_excel()
 bd.export_csv()
 bd.save()
