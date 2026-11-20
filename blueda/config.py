@@ -24,6 +24,10 @@ class BluedaConfig:
     missing_warn_ratio: float = 0.0            # A: 이 비율을 넘는 결측 컬럼을 '전처리 필요'로 판단
     print_code: bool = True                    # B: 실행한 코드를 콘솔에도 출력할지
     alpha: float = 0.05                        # 가설검정 유의수준 (관례 기준, 바꿀 수 있음)
+    z_threshold: float = 3.0                   # |z| 이상값 후보 기준 (관례)
+    chart_sample_size: int = 100_000           # 이보다 행이 많으면 차트만 표본으로 그림 (통계는 전체)
+    category_max_unique: int = 10              # 숫자 열의 고유값이 이 이하면 '코드로 적힌 범주'일 수 있다고 판단
+    dropdown_max_values: int = 20              # 범주형 값이 이 이하면 바로 목록, 넘으면 검색 우선
 
     def __post_init__(self):
         # [목적] 잘못된 검사 이름이 들어오면 바로 알려주기

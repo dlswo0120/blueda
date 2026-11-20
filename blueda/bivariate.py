@@ -12,7 +12,7 @@ import pandas as pd
 from scipy import stats
 
 from . import charts
-from .interpret import EFFECT_NOTE, effect_label, fmt_p, interpret_p, josa
+from .interpret import EFFECT_NOTE, effect_label, fmt_p, interpret_p, josa, p_column
 from .result import FAIL, SUCCESS, AnalysisResult
 
 
@@ -23,10 +23,11 @@ def _check_cols(df, *cols):
 
 
 def _group_boxplot(df, group_col, value_col, title):
+    df = charts.sample(df)  # 큰 데이터는 표본으로 그림
     fig, ax = charts.new_figure()
-    names = sorted(df[group_col].unique().tolist(), key=str)
+    names = sorted(df[group_col].dropna().unique().tolist(), key=str)
     values = [pd.to_numeric(df.loc[df[group_col] == n, value_col], errors="coerce").dropna() for n in names]
-    ax.boxplot(values, patch_artist=True,
+    ax.boxplot(values, patch_artist=True, flierprops=charts.FLIER,
                boxprops={"facecolor": "#DCE6F2", "edgecolor": charts.EDGE},
                medianprops={"color": charts.EDGE, "linewidth": 2})
     # 그룹 평균(◆)과 95% 신뢰구간(세로 막대): 평균 ± t × 표준오차
@@ -231,7 +232,7 @@ print(r, p, rho, p_s)'''
     rho, p_s = stats.spearmanr(d[x], d[y])
     import seaborn as sns
     fig, ax = charts.new_figure()
-    sns.scatterplot(data=d, x=x, y=y, ax=ax, color=charts.PRIMARY, alpha=0.7)
+    sns.scatterplot(data=charts.sample(d), x=x, y=y, ax=ax, color=charts.PRIMARY, alpha=0.7)
     ax.set_title(f"{x} vs {y} (Pearson r = {r:.3f})")
     fig.tight_layout()
     charts.plt.close(fig)
@@ -263,11 +264,12 @@ print(model.summary())                                    # 계수, 표준오차
     m = sm.OLS(d[y], X).fit()
     coef = pd.DataFrame({"계수": m.params, "표준오차": m.bse, "t": m.tvalues, "p값": m.pvalues,
                          "95% 하한": m.conf_int()[0], "95% 상한": m.conf_int()[1]}).round(4)
+    coef["p값"] = p_column(m.pvalues).to_numpy()
     coef.index = ["절편 (b0)", f"{x} (b1)"]
     b0, b1, p1 = m.params.iloc[0], m.params.iloc[1], m.pvalues.iloc[1]
     import seaborn as sns
     fig, ax = charts.new_figure()
-    sns.regplot(data=d, x=x, y=y, ax=ax, color=charts.PRIMARY, line_kws={"color": "#E07B39"})
+    sns.regplot(data=charts.sample(d), x=x, y=y, ax=ax, color=charts.PRIMARY, line_kws={"color": "#E07B39"})
     ax.set_title(f"{y} = {b0:.3f} + {b1:.3f}·{x}  (R² = {m.rsquared:.3f})")
     fig.tight_layout()
     charts.plt.close(fig)
@@ -289,7 +291,8 @@ print(model.summary())                                    # 계수, 표준오차
 
 def _residual_plot(model):
     fig, ax = charts.new_figure()
-    ax.scatter(model.fittedvalues, model.resid, color=charts.PRIMARY, alpha=0.7)
+    idx = charts.sample(model.fittedvalues).index  # 큰 데이터는 표본 점만
+    ax.scatter(model.fittedvalues.loc[idx], model.resid.loc[idx], color=charts.PRIMARY, alpha=0.7)
     ax.axhline(0, color="#E07B39", linewidth=1.5)
     ax.set_xlabel("예측값")
     ax.set_ylabel("잔차")

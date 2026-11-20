@@ -153,3 +153,26 @@ def format_report(report):
         lines += [f"     - {i}" for i in issues]
     lines.append("※ 자동 판단은 의심 신호입니다. 처리 방법은 결과를 보고 직접 결정해 주세요.")
     return "\n".join(lines)
+
+
+def check_result(df, outlier_iqr_k=1.5, missing_warn_ratio=0.0):
+    """화면·결과 세션용: 전처리 점검 결과를 AnalysisResult로 돌려줍니다."""
+    from .result import SUCCESS, AnalysisResult
+    report = check_preprocessing(df, None, outlier_iqr_k, missing_warn_ratio)
+    rows = []
+    for name, issues in report["items"].items():
+        rows.append({"항목": name, "상태": "확인 필요" if issues else "문제 없음",
+                     "내용": " / ".join(issues) if issues else "-"})
+    table = pd.DataFrame(rows).set_index("항목")
+    n_issue = sum(1 for v in report["items"].values() if v)
+    codes = [c for _, c, _, _ in (
+        _check_types(df), _check_missing(df, missing_warn_ratio), _check_duplicates(df),
+        _check_outliers(df, outlier_iqr_k), _check_categories(df), _check_units(df))]
+    return AnalysisResult(
+        "전처리 점검", SUCCESS,
+        f"6개 항목 중 {n_issue}개 확인 필요" + (" → 전처리 필요" if n_issue else " → 바로 분석 가능"),
+        metrics={"행 수": f"{len(df):,}", "열 수": df.shape[1], "확인 필요 항목": n_issue},
+        tables={"전처리 점검": table},
+        notes=["자동 판단은 의심 신호입니다. 처리 방법은 결과를 보고 직접 정하세요."],
+        code="\n\n".join(codes),
+    )

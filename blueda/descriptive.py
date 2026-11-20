@@ -99,6 +99,8 @@ print(summary)'''
             figures[f"{c} 히스토그램"] = charts.histogram(df[c])
             figures[f"{c} 박스플롯"] = charts.boxplot(df[c], iqr_k)
     notes = [ESTIMATOR_NOTE]
+    if with_charts and charts.sample_note(len(df)):
+        notes.append(charts.sample_note(len(df)))
     small = summary.index[summary["개수"] < 4].tolist()
     if small:
         notes.append(f"값이 4개 미만인 열은 왜도·첨도를 계산할 수 없습니다: {small}")

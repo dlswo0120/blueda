@@ -20,6 +20,40 @@ EDGE = "#2F4F7F"
 
 _font_ready = False
 
+# 행이 이보다 많으면 차트는 표본으로 그립니다 (통계값은 항상 전체 데이터). Blueda가 설정값으로 바꿉니다.
+SAMPLE_N = 100_000
+
+
+# 박스플롯 이상값 후보 점: 데이터가 크면 수천 개가 겹치므로 작고 옅게
+FLIER = {"marker": "o", "markersize": 2.5, "markerfacecolor": "#3B4656", "markeredgecolor": "none", "alpha": 0.35}
+
+
+def integer_bins(x, max_bins=60):
+    """값이 모두 정수면 구간 경계를 n.5에 두어, 한 구간에 정수가 1개 또는 2개씩 섞여 생기는
+    '막대 높이가 번갈아 높고 낮아지는' 착시를 막습니다. 정수가 아니면 'auto'."""
+    import numpy as np
+    v = np.asarray(x, dtype=float)
+    if len(v) == 0 or not np.all(np.mod(v, 1) == 0):
+        return "auto"
+    lo, hi = v.min(), v.max()
+    step = max(1, int(np.ceil((hi - lo + 1) / max_bins)))
+    return np.arange(lo - 0.5, hi + step + 0.5, step)
+
+
+def sample(data, n=None, seed=0):
+    """차트용 표본. 행이 n 이하면 그대로, 넘으면 무작위 n개 (시드 고정으로 매번 같은 그림)."""
+    n = n or SAMPLE_N
+    if len(data) <= n:
+        return data
+    return data.sample(n=n, random_state=seed)
+
+
+def sample_note(n_rows):
+    """표본으로 그렸을 때 결과에 붙일 안내 문구. 표본이 아니면 None."""
+    if n_rows > SAMPLE_N:
+        return f"차트는 {n_rows:,}행 중 표본 {SAMPLE_N:,}행으로 그렸습니다. 통계값은 전체 데이터로 계산했습니다."
+    return None
+
 
 def setup_korean_font():
     """설치된 폰트 중 첫 번째 한글 폰트를 기본 폰트로 지정합니다. 찾은 폰트 이름을 반환."""
@@ -46,7 +80,9 @@ def histogram(series, bins="auto", normal_curve=True):
     import numpy as np
     from scipy import stats
 
-    x = series.dropna()
+    x = sample(series.dropna())   # 큰 데이터는 표본으로 (평균·표준편차 곡선도 표본 기준)
+    if bins == "auto":
+        bins = integer_bins(x)
     fig, ax = new_figure()
     counts, edges, _ = ax.hist(x, bins=bins, color=PRIMARY, edgecolor="white", label="관측값")
     if normal_curve and len(x) >= 3 and x.std(ddof=1) > 0:
@@ -55,7 +91,8 @@ def histogram(series, bins="auto", normal_curve=True):
         # 정규분포 밀도 × 표본 수 × 구간 폭 = 히스토그램과 같은 '빈도' 눈금으로 맞춤
         ax.plot(grid, stats.norm.pdf(grid, x.mean(), x.std(ddof=1)) * len(x) * width,
                 color="#E07B39", linewidth=2, label="정규분포 (같은 평균·표준편차)")
-        ax.legend(frameon=False, fontsize=8)
+        ax.set_ylim(0, max(ax.get_ylim()[1], counts.max() * 1.22))   # 위쪽에 범례 자리 확보
+        ax.legend(loc="upper right", fontsize=8, frameon=True, framealpha=0.9, edgecolor="none")
     ax.set_title(f"{series.name} 히스토그램")
     ax.set_xlabel(str(series.name))
     ax.set_ylabel("빈도")
@@ -66,7 +103,7 @@ def histogram(series, bins="auto", normal_curve=True):
 
 def boxplot(series, k=1.5):
     fig, ax = new_figure(width=4, height=4)
-    ax.boxplot(series.dropna(), whis=k, patch_artist=True,
+    ax.boxplot(sample(series.dropna()), whis=k, patch_artist=True, flierprops=FLIER,
                boxprops={"facecolor": "#DCE6F2", "edgecolor": EDGE},
                medianprops={"color": EDGE, "linewidth": 2})
     ax.set_title(f"{series.name} 박스플롯 (수염 = IQR×{k})")

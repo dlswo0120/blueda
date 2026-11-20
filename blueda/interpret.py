@@ -15,13 +15,19 @@ def fmt_p(p):
     return "< 0.001" if p < 0.001 else f"{p:.4f}"
 
 
+def p_column(series):
+    """표 안의 p값 열: 아주 작은 값을 0으로 보이게 반올림하지 않고 '< 0.0001'로 표기."""
+    return series.map(lambda p: "< 0.0001" if p < 0.0001 else f"{p:.4f}")
+
+
 def _p_phrase(p):
     """문장 안에서 쓰는 p값 표현: 'p < 0.001' 또는 'p = 0.0321'."""
     return "p < 0.001" if p < 0.001 else f"p = {p:.4f}"
 
 
 # 받침에 따라 바뀌는 조사 쌍 (받침 있음, 받침 없음)
-_JOSA = {"을/를": ("을", "를"), "이/가": ("이", "가"), "은/는": ("은", "는"), "과/와": ("과", "와")}
+_JOSA = {"을/를": ("을", "를"), "이/가": ("이", "가"), "은/는": ("은", "는"), "과/와": ("과", "와"),
+         "으로/로": ("으로", "로")}
 
 
 def josa(word, pair):
@@ -33,8 +39,10 @@ def josa(word, pair):
     with_final, without_final = _JOSA[pair]
     last = word[-1] if word else ""
     if "가" <= last <= "힣":
-        has_final = (ord(last) - ord("가")) % 28 != 0   # 한글 음절 코드로 받침 유무 계산
-        return word + (with_final if has_final else without_final)
+        final = (ord(last) - ord("가")) % 28            # 한글 음절 코드로 받침 계산 (0 = 받침 없음)
+        if pair == "으로/로" and final == 8:             # ㄹ 받침은 '로' (예: 서울로)
+            return word + without_final
+        return word + (with_final if final else without_final)
     if last.isdigit():
         # 숫자는 읽는 소리로 판단: 0(십·백·천·만)·1(일)·3(삼)·6(육)·7(칠)·8(팔)은 받침 있음
         return word + (with_final if last in "013678" else without_final)

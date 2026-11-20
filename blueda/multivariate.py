@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from .bivariate import _check_cols, _residual_plot
-from .interpret import fmt_p, interpret_p, josa
+from .interpret import fmt_p, interpret_p, josa, p_column
 from .result import FAIL, SUCCESS, AnalysisResult
 
 
@@ -47,7 +47,8 @@ print(model.summary(), vif)'''
     vif = pd.Series([variance_inflation_factor(X.values, i) for i in range(1, X.shape[1])],
                     index=X.columns[1:], name="VIF").round(3)
     coef["VIF"] = vif
-    sig = coef.index[(coef["p값"] < alpha) & (coef.index != "const")].tolist()
+    sig = coef.index[(m.pvalues < alpha) & (coef.index != "const")].tolist()
+    coef["p값"] = p_column(m.pvalues)
     notes = ["각 계수는 '다른 변수를 고정했을 때' 그 변수가 1 늘면 종속변수가 얼마나 변하는지(편회귀계수)입니다.",
              "범주형 변수는 더미로 바뀌었고, 빠진 첫 범주가 비교 기준입니다.",
              f"수정 R² = {m.rsquared_adj:.3f}: 변수 개수를 고려한 설명력입니다."]

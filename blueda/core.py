@@ -8,7 +8,7 @@ from .preprocess_check import check_preprocessing, format_report
 from .reproducibility import record_environment, save_environment, set_seed
 from .source_check import SourceInfo, review_source, source_markdown
 from .stat_checks import run_stat_checks
-from . import bivariate, descriptive, export, inferential, multivariate, registry, variables
+from . import bivariate, charts, descriptive, export, inferential, multivariate, registry, variables
 from .loader import load_file
 from .result import FAIL, AnalysisResult
 from .scope import AnalysisScope
@@ -35,6 +35,7 @@ class Blueda:
         self.var_types = {}               # 사용자가 직접 지정한 변수 종류 (열 → 수치형/범주형/...)
         self.results = []                 # 결과 세션: 실행한 분석 결과가 순서대로 쌓임
         set_seed(self.config.random_seed)  # C: 시작할 때 시드 고정
+        charts.SAMPLE_N = self.config.chart_sample_size  # 큰 데이터 차트 표본 크기
 
     @classmethod
     def from_csv(cls, path, config=None, encoding="utf-8", **read_kwargs):
@@ -64,8 +65,9 @@ print(df.head())                                    # 앞 5행 미리보기'''
         return bd
 
     # ---------- 분석 범위 ----------
-    def set_scope(self, columns=None, query="", row_start=None, row_end=None, dropna=False):
-        self.scope = AnalysisScope(columns or [], query, row_start, row_end, dropna)
+    def set_scope(self, columns=None, query="", row_start=None, row_end=None, dropna=False, filters=None):
+        self.scope = AnalysisScope(columns=columns or [], filters=filters or [], query=query,
+                                   row_start=row_start, row_end=row_end, dropna=dropna)
         sub, _ = self.scope.apply(self.df)  # 잘못된 열 이름이면 여기서 바로 에러
         print(f"[BLUEDA] 분석 범위: {self.scope.describe()} → {len(sub):,}행 × {sub.shape[1]}열")
         return sub
@@ -88,7 +90,11 @@ print(df.head())                                    # 앞 5행 미리보기'''
     def _run(self, func, **kwargs):
         try:
             sub, scope_code = self.scope.apply(self.df)
-            return self._record(func(sub, **kwargs), scope_code)
+            result = func(sub, **kwargs)
+            note = charts.sample_note(len(sub))
+            if result.figures and note and note not in result.notes:
+                result.notes.append(note)
+            return self._record(result, scope_code)
         except Exception as e:  # 실패해도 툴이 멈추지 않고 FAIL로 기록
             return self._record(AnalysisResult(getattr(func, "__name__", "분석"), FAIL, f"{type(e).__name__}: {e}"))
 
@@ -116,7 +122,8 @@ print(df.head())                                    # 앞 5행 미리보기'''
         if column not in self.df.columns:
             raise KeyError(column)
         self.var_types[column] = kind
-        print(f"[BLUEDA] '{column}' → {kind}로 지정")
+        from .interpret import josa
+        print(f"[BLUEDA] '{column}' → {josa(kind, '으로/로')} 지정")
 
     def analysis_unit(self, key_columns, unit_name=""):
         """한 행이 무엇인지(예: 고객 1명) 정하고, 기준 열에 중복이 없는지 확인합니다."""
@@ -124,7 +131,8 @@ print(df.head())                                    # 앞 5행 미리보기'''
             key_columns = [key_columns]
         return self._run(variables.check_analysis_unit, key_columns=key_columns, unit_name=unit_name)
 
-    def zscore(self, threshold=3.0):
+    def zscore(self, threshold=None):
+        threshold = threshold if threshold is not None else self.config.z_threshold
         return self._run(descriptive.zscores, threshold=threshold, var_types=self.var_types)
 
     # ---------- 2) 추론통계 ----------
@@ -215,6 +223,12 @@ print(df.head())                                    # 앞 5행 미리보기'''
         return path
 
     # ---------- A ----------
+    def preprocess_check(self):
+        """분석 범위 안에서 전처리 점검 (화면·결과 세션용)."""
+        from .preprocess_check import check_result
+        return self._run(check_result, outlier_iqr_k=self.config.outlier_iqr_k,
+                         missing_warn_ratio=self.config.missing_warn_ratio)
+
     def check(self):
         self.report = check_preprocessing(
             self.df, self.log, self.config.outlier_iqr_k, self.config.missing_warn_ratio
