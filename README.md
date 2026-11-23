@@ -4,7 +4,7 @@
 
 ![메인 분석 화면](docs/images/main_light.png)
 
-## 프로그램 실행 (v0.5.1)
+## 프로그램 실행 (v0.5.2)
 
 ```bash
 pip install -e ".[gui]"     # 엔진 + 화면(PySide6)
@@ -35,6 +35,8 @@ python -m blueda            # 프로그램 창 열기
 | 분석 화면 시작 | 약 0.3초 |
 | 필터 칩 적용 | 약 0.2초 |
 | 분산분석 + 사후검정 + 차트 | 약 0.8초 |
+
+코드 구조와 고칠 곳은 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)에 정리했습니다.
 
 변경 내용은 [CHANGELOG.md](CHANGELOG.md)에 버전별로 기록합니다. 각 버전은 Git 태그로 남아 있어 언제든 되돌릴 수 있습니다.
 

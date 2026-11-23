@@ -319,22 +319,25 @@ def _precheck_tables(key, p, df, kinds):
 def run(bd, key, params):
     """메뉴 key와 칸 값으로 Blueda 메서드를 실행합니다."""
     p = dict(params)
+    # 기본: 분석 키와 같은 이름의 Blueda 메서드를 칸 값으로 부름 (맨 아래 getattr)
+    # 아래 분기는 이름이 다르거나 값을 바꿔야 하는 경우만
     if key in ("pivot_table", "crosstab", "chart_builder"):
+        # 차트 종류 등에 따라 숨은 칸의 값은 넘기지 않음
         m = BY_KEY[key]
         p = {q.name: p.get(q.name) for q in m.params if visible_basic(q, params)}
         if key == "chart_builder":
             return bd.chart(**p)
         return getattr(bd, key)(**p)
-    if key == "describe":
+    if key == "describe":                 # 수치형·범주형 결과 두 개
         return bd.describe()
-    if key == "check":
+    if key == "check":                    # 화면용 표 결과를 돌려주는 메서드
         return bd.preprocess_check()
-    if key == "ci_proportion":
+    if key == "ci_proportion":            # 비율 신뢰구간은 confidence_interval의 category 모드
         return bd.confidence_interval(p["column"], category=p["category"])
-    if key == "sampling_distribution":
+    if key == "sampling_distribution":    # 입력칸 글자 → 정수
         p["sample_size"] = int(p.get("sample_size") or 30)
-    if key == "one_sample_ttest":
+    if key == "one_sample_ttest":         # 입력칸 글자 → 실수
         p["mu0"] = float(p["mu0"])
-    if key == "analysis_unit":
+    if key == "analysis_unit":            # 화면은 열 하나, 엔진은 열 목록을 받음
         p["key_columns"] = [p["key_columns"]] if isinstance(p["key_columns"], str) else p["key_columns"]
     return getattr(bd, key)(**p)

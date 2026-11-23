@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "blueda"
-version = "0.5.1"
+version = "0.5.2"
 description = "전처리 판단부터 분석 로그까지 남기는 EDA 도우미"
 readme = "README.md"
 requires-python = ">=3.9"
