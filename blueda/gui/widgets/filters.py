@@ -253,9 +253,16 @@ class FilterBar(QWidget):
         self._rebuild()
 
     def set_data(self, df, kinds, max_direct=20):
+        """새 파일을 열 때: 데이터를 바꾸고 필터·직접 입력 조건을 모두 비웁니다."""
         self.df, self.kinds, self.max_direct = df, kinds, max_direct
         self.filters, self.query = [], ""
         self.direct.clear()
+        self._rebuild()
+
+    def update_data(self, df, kinds, max_direct=20):
+        """데이터 내용만 바뀌었을 때(날짜 변환 등) 쓰는 갱신. 걸어 둔 필터와 직접 입력 조건은 그대로 둡니다.
+        (set_data는 새 파일을 열 때 쓰며 필터를 모두 비웁니다.)"""
+        self.df, self.kinds, self.max_direct = df, kinds, max_direct
         self._rebuild()
 
     def set_row_count(self, n, total):

@@ -26,7 +26,7 @@ dev = ["pytest>=7", "pytest-qt>=4", "ipykernel"]
 blueda = "blueda.gui.app:main"
 
 [tool.setuptools]
-packages = ["blueda", "blueda.gui", "blueda.gui.widgets"]
+packages = ["blueda", "blueda.gui", "blueda.gui.widgets", "blueda.gui.window"]
 
 [tool.setuptools.package-data]
 "blueda.gui" = ["assets/*.svg"]

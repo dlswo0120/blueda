@@ -307,3 +307,13 @@ def test_date_conversion_refused_during_analysis(qtbot, win):
     dlg.accept()
     assert not pd.api.types.is_datetime64_any_dtype(win.df["접수일"])
     qtbot.waitUntil(lambda: not win.worker.isRunning(), timeout=5000)
+
+
+def test_date_conversion_keeps_existing_filters(qtbot, win):
+    """날짜 변환을 해도 이미 걸어 둔 필터는 그대로 남는다 (v0.5.2 수정)"""
+    from blueda.scope import Filter
+    win.main.filters.set_state([Filter("시도", "in", values=["서울"])])
+    win.offer_date_conversion()
+    win.date_dialog.accept()
+    qtbot.waitUntil(lambda: pd.api.types.is_datetime64_any_dtype(win.df["접수일"]), timeout=20000)
+    assert [f.values for f in win.main.filters.filters] == [["서울"]]
