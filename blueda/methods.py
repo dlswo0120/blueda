@@ -194,8 +194,27 @@ def precheck(key, params, df, kinds):
     if len(df) == 0:
         return Check(False, "조건에 맞는 행이 없습니다. 행 조건을 넓혀 주세요.")
 
+    # 값이 있는 행이 너무 적으면 실행 전에 막음 (실행해도 '값이 부족' FAIL만 나오므로)
+    need = MIN_VALUES.get(key)
+    if need:
+        used = [params.get(p.name) for p in m.params
+                if p.kind in COLUMN_KINDS and visible_basic(p, params) and params.get(p.name)]
+        used += [c for p in m.params if p.kind == COL_MULTI for c in (params.get(p.name) or [])]
+        used = [c for c in dict.fromkeys(used) if c in df.columns]
+        if used:
+            n_ok = int(df[used].notna().all(axis=1).sum())
+            if n_ok < need:
+                return Check(False, f"고른 열에 모두 값이 있는 행이 {n_ok}개뿐입니다. 이 분석은 {need}개 이상 필요합니다. "
+                                    "조건(필터)을 넓히거나 결측을 확인하세요.")
+
     if key in ("pivot_table", "crosstab", "chart_builder"):
         return _precheck_tables(key, params, df, kinds)
+
+    if key == "chi_square":
+        for c in (params["row_col"], params["col_col"]):
+            k = df[c].nunique()
+            if k < 2:
+                return Check(False, f"{josa(c, '은/는')} 지금 조건에서 범주가 {k}개뿐입니다. 카이제곱은 두 열 모두 범주가 2개 이상 필요합니다.")
 
     if key in ("t_test", "anova"):
         k = df[params["group_col"]].dropna().nunique()
@@ -222,6 +241,11 @@ def precheck(key, params, df, kinds):
 
 
 MAX_PIVOT_COLUMNS = 50
+
+# 분석별로 값이 있어야 하는 최소 행 수 (표본분포·신뢰구간·t검정은 2, 상관·회귀는 3)
+MIN_VALUES = {"sampling_distribution": 2, "confidence_interval": 2, "one_sample_ttest": 2, "t_test": 4,
+              "anova": 3, "chi_square": 2, "correlation_test": 3, "simple_regression": 3,
+              "multiple_regression": 3, "pivot_table": 1, "crosstab": 1, "chart_builder": 1}
 
 
 def _precheck_tables(key, p, df, kinds):
@@ -254,6 +278,8 @@ def _precheck_tables(key, p, df, kinds):
         nums = [col for col in df.columns if kinds.get(col) == NUMERIC]
         if len(nums) < 2:
             return Check(False, "상관 히트맵은 왼쪽 열 목록에서 수치형 열을 2개 이상 고르면 그립니다.")
+        if len(df) < 3:
+            return Check(False, f"지금 조건에 맞는 행이 {len(df)}개뿐이라 상관계수를 계산할 수 없습니다 (3개 이상 필요).")
         return Check(True, f"왼쪽에서 고른 수치형 열 {len(nums)}개로 그립니다.")
     if t in ("막대", "선", "산점도", "히스토그램") and not x:
         return Check(False, "X를 고르세요.")

@@ -9,7 +9,6 @@
 
 import re
 
-import numpy as np
 import pandas as pd
 
 # 숫자 뒤에 단위가 붙은 값을 찾는 패턴 (예: "10kg", "1,000원", "3.5 %")

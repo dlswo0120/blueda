@@ -28,7 +28,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 
-from .scope import BETWEEN, IN, Filter
+from .scope import IN, Filter
 
 MEMORY_LIMIT = 200
 KINDS = {"file": "파일", "filter": "필터", "analysis": "분석", "dates": "날짜", "command": "명령", "export": "내보내기"}

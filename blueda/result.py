@@ -13,6 +13,53 @@ FAIL = "FAIL"                  # 실행했지만 조건이 맞지 않아 실패 
 UNSUPPORTED = "UNSUPPORTED"    # 아직 툴에 없는 기능
 
 
+class ChartImage:
+    """차트를 PNG 이미지로 보관합니다.
+
+    matplotlib 그림 객체를 결과마다 들고 있으면 분석 한 번에 약 15MB씩 메모리가 늘어
+    (200회 분석에 3GB 이상) 오래 쓰면 느려지거나 꺼질 수 있습니다.
+    그래서 결과에 담기는 순간 PNG(차트 하나에 약 50~150KB)로 바꾸고 그림 객체는 닫습니다.
+    savefig()를 지원해 내보내기 코드는 그대로 씁니다.
+    """
+    DPI = 120
+
+    def __init__(self, fig):
+        import io
+        import matplotlib.pyplot as plt
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=self.DPI)
+        self.png = buf.getvalue()
+        w, h = fig.get_size_inches()
+        self.size = (int(w * self.DPI), int(h * self.DPI))
+        plt.close(fig)
+
+    def savefig(self, f, format="png", **_):
+        """matplotlib Figure.savefig와 같은 모양 (PNG만, 해상도는 만들 때 정해짐)."""
+        if isinstance(f, (str, bytes)) or hasattr(f, "__fspath__"):
+            with open(f, "wb") as out:
+                out.write(self.png)
+        else:
+            f.write(self.png)
+
+    def __len__(self):
+        return len(self.png)
+
+
+def to_images(figures):
+    """결과의 그림 객체들을 PNG로 바꿉니다 (이미 바뀐 것은 그대로)."""
+    return {name: (f if isinstance(f, ChartImage) else ChartImage(f)) for name, f in figures.items()}
+
+
+class UserFacingError(ValueError):
+    """사용자에게 그대로 보여줄 안내 문장을 담은 오류 (프로그램 용어 없이 표시)."""
+
+
+def constant_message(column):
+    """값이 모두 같은 열로는 검정·상관·회귀를 계산할 수 없을 때의 안내."""
+    return (f"{column}의 값이 모두 같습니다(분산 0). 이 경우 검정 통계량이 정의되지 않아 계산하지 않습니다. "
+            "조건(필터)이나 열 선택을 확인하세요.")
+
+
 @dataclass
 class AnalysisResult:
     name: str                                     # 분석 이름 (예: "기술통계 - 수치형")
@@ -20,7 +67,7 @@ class AnalysisResult:
     message: str = ""                             # 결과 세션 창에 보여줄 한 줄 요약
     metrics: dict = field(default_factory=dict)   # 지표 탭: 핵심 숫자 (예: {"p_value": 0.03})
     tables: dict = field(default_factory=dict)    # 데이터 탭: 이름 → DataFrame
-    figures: dict = field(default_factory=dict)   # 차트 탭: 이름 → matplotlib Figure
+    figures: dict = field(default_factory=dict)   # 차트 탭: 이름 → 그림 (세션에 쌓일 때 ChartImage(PNG)로 바뀜)
     notes: list = field(default_factory=list)     # 해석 주의사항
     code: str = ""                                # 실행에 쓴 코드 (로그용)
     created_at: str = field(default_factory=lambda: datetime.now().strftime("%H:%M:%S"))

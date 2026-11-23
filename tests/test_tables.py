@@ -174,6 +174,7 @@ def test_hist_clips_view_but_stats_use_all(bd):
 def test_box_log_scale_for_heavy_positive(bd):
     d = bd.df.copy()
     d.loc[:2, "sales"] = [1e6, 2e6, 3e6]
-    r = Blueda(d, BluedaConfig(print_code=False)).chart("상자그림", x="region", y="sales")
+    from blueda.tables import chart
+    r = chart(d, "상자그림", x="region", y="sales")          # 엔진 함수는 그림 객체를 돌려줌
     assert any("로그 눈금" in n for n in r.notes)
     assert r.figures["상자그림 차트"].axes[0].get_yscale() == "log"

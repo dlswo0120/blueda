@@ -12,7 +12,7 @@ from scipy import stats
 
 from . import charts
 from .interpret import EFFECT_NOTE, effect_label, fmt_p, interpret_p, josa
-from .result import FAIL, SUCCESS, AnalysisResult
+from .result import constant_message, FAIL, SUCCESS, AnalysisResult
 
 
 def _numeric_series(df, column):
@@ -110,6 +110,8 @@ print(t, p, d)'''
     x = _numeric_series(df, column)
     if len(x) < 2:
         return AnalysisResult("단일표본 t검정", FAIL, "값이 2개 이상 필요합니다.", code=code)
+    if x.nunique() < 2:
+        return AnalysisResult("단일표본 t검정", FAIL, constant_message(column), code=code)
     res = stats.ttest_1samp(x, popmean=mu0, alternative=alternative)
     d = (x.mean() - mu0) / x.std(ddof=1)
     h1_text = {"two-sided": f"{column}의 평균이 {josa(mu0, '과/와')} 다르다",

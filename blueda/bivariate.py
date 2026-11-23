@@ -13,7 +13,7 @@ from scipy import stats
 
 from . import charts
 from .interpret import EFFECT_NOTE, effect_label, fmt_p, interpret_p, josa, p_column
-from .result import FAIL, SUCCESS, AnalysisResult
+from .result import constant_message, FAIL, SUCCESS, AnalysisResult
 
 
 def _check_cols(df, *cols):
@@ -75,6 +75,8 @@ t, p = stats.ttest_ind(a, b, equal_var=equal_var, alternative={alternative!r})
 sp = np.sqrt(((len(a)-1)*a.var() + (len(b)-1)*b.var()) / (len(a)+len(b)-2))  # 합동 표준편차
 d = (a.mean() - b.mean()) / sp                            # 효과 크기 Cohen's d
 print(lev_p, t, p, d)'''
+    if len(levels) == 2 and data[value_col].nunique() < 2:
+        return AnalysisResult("독립표본 t검정", FAIL, constant_message(value_col), code=code)
     if len(levels) != 2:
         return AnalysisResult("독립표본 t검정", FAIL,
                               f"그룹이 2개여야 합니다 (현재 {len(levels)}개: {levels[:5]}). 3개 이상은 ANOVA를 쓰세요.",
@@ -130,6 +132,10 @@ print(table, eta2, tukey)'''
     k = data[group_col].nunique()
     if k < 2:
         return AnalysisResult("일원분산분석 (ANOVA)", FAIL, f"그룹이 2개 이상 필요합니다 (현재 {k}개).", code=code)
+    if data.groupby(group_col, observed=True)[value_col].var().fillna(0).eq(0).all():
+        # 그룹 안 분산이 모두 0이면 F = 집단간/0 으로 정의되지 않음 (계산하면 엉터리 p값이 나옴)
+        return AnalysisResult("일원분산분석 (ANOVA)", FAIL, constant_message(value_col) +
+                              " (그룹 안의 값이 모두 같아 그룹 내 분산이 0입니다.)", code=code)
     if data.groupby(group_col).size().min() < 2:
         return AnalysisResult("일원분산분석 (ANOVA)", FAIL, "각 그룹에 값이 2개 이상 필요합니다.", code=code)
     model = ols(f"Q('{value_col}') ~ C(Q('{group_col}'))", data=data).fit()
@@ -228,6 +234,9 @@ print(r, p, rho, p_s)'''
     d = df[[x, y]].apply(pd.to_numeric, errors="coerce").dropna()
     if len(d) < 3:
         return AnalysisResult("상관분석 (검정)", FAIL, "짝지어진 값이 3개 이상 필요합니다.", code=code)
+    for c in (x, y):
+        if d[c].nunique() < 2:
+            return AnalysisResult("상관분석 (검정)", FAIL, constant_message(c), code=code)
     r, p = stats.pearsonr(d[x], d[y])
     rho, p_s = stats.spearmanr(d[x], d[y])
     import seaborn as sns
@@ -260,6 +269,9 @@ print(model.summary())                                    # 계수, 표준오차
     d = df[[x, y]].apply(pd.to_numeric, errors="coerce").dropna()
     if len(d) < 3:
         return AnalysisResult("단순회귀", FAIL, "짝지어진 값이 3개 이상 필요합니다.", code=code)
+    for c in (x, y):
+        if d[c].nunique() < 2:
+            return AnalysisResult("단순회귀", FAIL, constant_message(c), code=code)
     X = sm.add_constant(d[x])
     m = sm.OLS(d[y], X).fit()
     coef = pd.DataFrame({"계수": m.params, "표준오차": m.bse, "t": m.tvalues, "p값": m.pvalues,

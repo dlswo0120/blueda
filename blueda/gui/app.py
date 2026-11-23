@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 
 from .. import charts, methods as M
 from ..core import Blueda
-from ..loader import LoadCancelled, detect_file, estimate_memory, load_file, total_memory
+from ..loader import detect_file, estimate_memory, load_file, total_memory
 from ..result import AnalysisResult
 from ..scope import AnalysisScope
 from ..settings import EDITABLE, load_settings, save_settings
@@ -661,6 +661,15 @@ class MainWindow(QMainWindow):
 
     def _dates_chosen(self, dlg, code):
         chosen = dlg.chosen() if code == QDialog.Accepted else []
+        if chosen:
+            main, bg = self._running()
+            if main is not None:
+                # 분석 스레드가 같은 데이터를 읽는 중에 열을 바꾸면 결과가 섞이거나 오류가 날 수 있음
+                self.log("INFO", "분석이 끝난 뒤에 날짜를 바꿀 수 있습니다. 끝나면 'dates' 명령으로 다시 여세요.")
+                return
+            if bg:                                        # 이슈 점검(몇 초)은 끝나기를 기다렸다가 바꿈
+                bg[0].finished.connect(lambda d=dlg, c=code: QTimer.singleShot(50, lambda: self._dates_chosen(d, c)))
+                return
         if not chosen:
             self.log("INFO", "날짜형 변환을 건너뛰었습니다. 나중에 'dates' 명령으로 다시 열 수 있습니다.")
             return

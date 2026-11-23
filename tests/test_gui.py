@@ -296,3 +296,13 @@ def test_new_file_closes_old_date_dialog(qtbot, win, csv_path):
     win.open_file(csv_path)
     assert not dlg.isVisible() and win.date_dialog is None
     qtbot.waitUntil(lambda: win.df is not None and win.start.start_btn.isEnabled(), timeout=30000)
+
+
+def test_date_conversion_refused_during_analysis(qtbot, win):
+    """분석 스레드가 데이터를 읽는 중에는 날짜 변환을 하지 않는다"""
+    win.offer_date_conversion()
+    dlg = win.date_dialog
+    win.worker = _slow_worker(0.5)
+    dlg.accept()
+    assert not pd.api.types.is_datetime64_any_dtype(win.df["접수일"])
+    qtbot.waitUntil(lambda: not win.worker.isRunning(), timeout=5000)

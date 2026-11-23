@@ -1146,7 +1146,6 @@ class ResultTabs(QTabWidget):
 
     def show_results(self, results):
         """한 번 실행에서 나온 결과를 모두 위아래로 이어서 보여줍니다 (예: 요약 통계 = 수치형 + 범주형)."""
-        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
         for c in self._canvases:
             c.deleteLater()
         self._canvases = []
@@ -1185,12 +1184,10 @@ class ResultTabs(QTabWidget):
                 figs = QGridLayout()
                 figs.setSpacing(12)
                 for i, (name, fig) in enumerate(r.figures.items()):
-                    fig.set_dpi(90)                       # 화면용: 글자가 너무 커지지 않게
-                    canvas = FigureCanvasQTAgg(fig)
-                    canvas.setMinimumHeight(320)
-                    canvas.setToolTip(name)
-                    self._canvases.append(canvas)
-                    figs.addWidget(canvas, i // 2, i % 2)
+                    view = ChartView(fig)
+                    view.setToolTip(name)
+                    self._canvases.append(view)
+                    figs.addWidget(view, i // 2, i % 2)
                 lay.addLayout(figs)
             elif r.ok and not many:
                 lay.addWidget(label("이 분석은 차트가 없습니다. 지표 탭에서 결과 표를 보세요.", "sub"))
@@ -1231,6 +1228,42 @@ class ResultTabs(QTabWidget):
 # ======================================================================
 # 아래: 결과 세션 (터미널 스타일)
 # ======================================================================
+class ChartView(QLabel):
+    """PNG 차트를 칸 너비에 맞춰 비율을 지키며 보여줍니다 (창 크기를 바꾸면 다시 맞춤)."""
+
+    def __init__(self, image):
+        super().__init__()
+        from PySide6.QtGui import QPixmap
+        from ..result import ChartImage
+        if not isinstance(image, ChartImage):          # 엔진 밖에서 만든 그림도 받음
+            image = ChartImage(image)
+        self._pix = QPixmap()
+        self._pix.loadFromData(image.png, "PNG")
+        self.setAlignment(Qt.AlignCenter)
+        self.setMinimumSize(240, 160)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self._fit()
+
+    def _fit(self):
+        if self._pix.isNull():
+            return
+        w = max(240, min(self.width(), int(self._pix.width() * 1.1)))
+        if w == getattr(self, "_last_w", None):        # 같은 너비면 다시 그리지 않음 (크기 조정 반복 방지)
+            return
+        self._last_w = w
+        self.setPixmap(self._pix.scaledToWidth(w, Qt.SmoothTransformation))
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._fit()
+
+    def heightForWidth(self, w):
+        return int(self._pix.height() * min(w, self._pix.width() * 1.1) / max(1, self._pix.width()))
+
+    def hasHeightForWidth(self):
+        return True
+
+
 class SessionPanel(QFrame):
     resultClicked = Signal(int)
     command = Signal(str)

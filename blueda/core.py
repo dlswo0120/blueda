@@ -10,7 +10,7 @@ from .source_check import SourceInfo, review_source, source_markdown
 from .stat_checks import run_stat_checks
 from . import bivariate, charts, descriptive, export, inferential, multivariate, registry, variables
 from .loader import load_file
-from .result import FAIL, AnalysisResult
+from .result import UserFacingError, to_images, FAIL, AnalysisResult
 from .scope import AnalysisScope
 
 
@@ -79,6 +79,8 @@ print(df.head())                                    # 앞 5행 미리보기'''
     # ---------- 결과 세션 ----------
     def _record(self, result, scope_code=""):
         """결과를 세션에 쌓고, 결과 줄을 출력하고, 코드를 로그에 남깁니다."""
+        if result.figures:
+            result.figures = to_images(result.figures)   # 그림 객체 대신 PNG로 보관 (메모리 누적 방지)
         self.results.append(result)
         print(result.session_line())
         if result.code:
@@ -95,8 +97,11 @@ print(df.head())                                    # 앞 5행 미리보기'''
             if result.figures and note and note not in result.notes:
                 result.notes.append(note)
             return self._record(result, scope_code)
-        except Exception as e:  # 실패해도 툴이 멈추지 않고 FAIL로 기록
-            return self._record(AnalysisResult(getattr(func, "__name__", "분석"), FAIL, f"{type(e).__name__}: {e}"))
+        except UserFacingError as e:   # 조건이 맞지 않아 계산할 수 없는 경우: 안내 문장만
+            return self._record(AnalysisResult(getattr(func, "__name__", "분석"), FAIL, str(e)))
+        except Exception as e:  # 예상하지 못한 오류도 툴이 멈추지 않고 FAIL로 기록 (원인 파악용으로 오류 이름 포함)
+            return self._record(AnalysisResult(getattr(func, "__name__", "분석"), FAIL,
+                                               f"예상하지 못한 오류로 계산하지 못했습니다 ({type(e).__name__}: {e})"))
 
     # ---------- 표·차트 만들기 ----------
     def pivot_table(self, rows, columns=None, values=None, agg="합계", date_unit="월"):

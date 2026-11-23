@@ -177,5 +177,6 @@ def test_zscore_flags_extreme_value(cfg):
 
 
 def test_histogram_has_normal_curve(sample_df, cfg):
-    fig = Blueda(sample_df, cfg).describe("numeric")[0].figures["매출 히스토그램"]
+    from blueda.descriptive import describe_numeric
+    fig = describe_numeric(sample_df).figures["매출 히스토그램"]     # 엔진 함수는 그림 객체를 돌려줌
     assert len(fig.axes[0].lines) == 1                         # 정규분포 곡선 1개

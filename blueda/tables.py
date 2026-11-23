@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from . import charts
-from .result import SUCCESS, AnalysisResult
+from .result import SUCCESS, AnalysisResult, UserFacingError
 
 DATE_UNITS = {"일": "D", "주": "W", "월": "M", "분기": "Q", "연": "Y"}
 AGGS = {"합계": "sum", "평균": "mean", "개수": "count", "중앙값": "median", "최솟값": "min", "최댓값": "max"}
@@ -75,7 +75,7 @@ def pivot_table(df, rows, columns=None, values=None, agg="합계", date_unit="�
         tmp["__c"] = c
         lines.append(f"cols = {c_expr}")
         if c.nunique() > MAX_PIVOT_COLUMNS:
-            raise ValueError(f"'{columns}' 범주가 {c.nunique()}개라 표가 너무 넓습니다 ({MAX_PIVOT_COLUMNS}개 이하). 행과 열을 바꾸거나 조건으로 줄이세요.")
+            raise UserFacingError(f"'{columns}' 범주가 {c.nunique()}개라 표가 너무 넓습니다 ({MAX_PIVOT_COLUMNS}개 이하). 행과 열을 바꾸거나 조건으로 줄이세요.")
     if values is not None:
         tmp["__v"] = df[values]
 
@@ -96,7 +96,7 @@ def pivot_table(df, rows, columns=None, values=None, agg="합계", date_unit="�
         total = len(tmp) if values is None else tmp["__v"].agg(func)
         table = series.to_frame(col_name)
         table.loc[TOTAL] = total
-        lines.append(f"table = sub.groupby(rows, observed=True)" +
+        lines.append("table = sub.groupby(rows, observed=True)" +
                      (".size()" if values is None else f"[{values!r}].agg({func!r})"))
     table.index.name = rows
     if columns:
@@ -244,6 +244,8 @@ def _bar(df, x, y, color, agg, date_unit, top_n):
         table = _aggregate(df, [xs, cs], y, agg, [x, color]).unstack(fill_value=0)
     else:
         table = _aggregate(df, [xs], y, agg, [x]).to_frame(ylabel)
+    if table.empty:
+        raise UserFacingError(f"{x}에 값이 있는 행이 없어 막대를 그릴 수 없습니다.")
     if not x_date:
         table = table.loc[table.sum(axis=1).sort_values(ascending=False).index]   # 큰 값부터
     if len(table) > top_n:
@@ -263,7 +265,7 @@ def _bar(df, x, y, color, agg, date_unit, top_n):
     code = (f"key = {x_expr}\n" + (f"color = {c_expr}\n" if color else "")
             + f"table = sub.groupby([key{', color' if color else ''}], observed=True)"
             + (".size()" if y is None else f"[{y!r}].agg({_agg_code(agg)!r})")
-            + (".unstack(fill_value=0)" if color else "") + "\n"
+            + (".unstack(fill_value=0)" if color else ".to_frame()") + "\n"
             + ("table = table.loc[table.sum(axis=1).sort_values(ascending=False).index]   # 큰 값부터\n" if not x_date else "")
             + f"table.head({top_n}).plot.bar()")
     return fig, _round(table), code, notes, f"{x}별 {ylabel} 막대 ({len(table)}개 범주)"
@@ -285,6 +287,8 @@ def _line(df, x, y, color, agg, date_unit, top_n):
     else:
         table = _aggregate(df, [xs], y, agg, [x]).to_frame(ylabel)
     table = table.sort_index()
+    if table.empty:
+        raise UserFacingError(f"{x}에 값이 있는 행이 없어 선을 그릴 수 없습니다.")
     fig, ax = charts.new_figure(7.5, 4.2)
     labels = table.index.astype(str)
     pos = np.arange(len(table))
@@ -309,6 +313,8 @@ def _line(df, x, y, color, agg, date_unit, top_n):
 def _scatter(df, x, y, color, agg, date_unit, top_n):
     cols = [x, y] + ([color] if color else [])
     data = df[cols].dropna()
+    if data.empty:
+        raise UserFacingError(f"{x}와 {y}에 함께 값이 있는 행이 없어 산점도를 그릴 수 없습니다.")
     s = charts.sample(data)
     notes = []
     fig, ax = charts.new_figure(6.5, 4.6)
@@ -326,8 +332,11 @@ def _scatter(df, x, y, color, agg, date_unit, top_n):
         ax.scatter(s[x], s[y], s=size, color=charts.PRIMARY, alpha=alpha, linewidths=0)
     _style(ax, f"{x}와 {y}", x, y)
     ax.grid(axis="x", color="#E5E7EB", linewidth=0.8)
-    r = data[x].corr(data[y]) if len(data) > 2 else np.nan
-    table = pd.DataFrame({"값": [len(data), round(r, 4)]}, index=["점 개수(전체)", "Pearson r (전체)"])
+    ok_r = len(data) > 2 and data[x].nunique() > 1 and data[y].nunique() > 1
+    r = data[x].corr(data[y]) if ok_r else None
+    r_text = f"{r:.3f}" if r is not None else "계산 불가(점 3개 미만 또는 값이 모두 같음)"
+    table = pd.DataFrame({"값": [f"{len(data):,}", r_text if r is None else round(r, 4)]},
+                         index=["점 개수(전체)", "Pearson r (전체)"], dtype=object)
     note = charts.sample_note(len(data))
     if note:
         notes.append(note)
@@ -335,12 +344,14 @@ def _scatter(df, x, y, color, agg, date_unit, top_n):
     code = (f"data = sub[{cols!r}].dropna()\n"
             f"data.plot.scatter(x={x!r}, y={y!r}, alpha={alpha})\n"
             f"data[{x!r}].corr(data[{y!r}])   # Pearson r")
-    return fig, table, code, notes, f"{x}–{y} 산점도 (r = {r:.3f}, {len(data):,}점)"
+    return fig, table, code, notes, f"{x}–{y} 산점도 (r = {r_text}, {len(data):,}점)"
 
 
 def _hist(df, x, y, color, agg, date_unit, top_n):
     col = x or y
     data = df[[col] + ([color] if color else [])].dropna()
+    if data.empty:
+        raise UserFacingError(f"{col}에 값이 없어 히스토그램을 그릴 수 없습니다.")
     s = charts.sample(data)
     notes = []
     fig, ax = charts.new_figure(7, 4.2)
@@ -372,7 +383,10 @@ def _hist(df, x, y, color, agg, date_unit, top_n):
     note = charts.sample_note(len(data))
     if note:
         notes.append(note)
-    code = f"sub[{col!r}].plot.hist(bins='auto')" + (f"   # 색 구분: sub.groupby({color!r})[{col!r}]" if color else "")
+    code = ("import matplotlib.pyplot as plt\n"
+            f"plt.hist(sub[{col!r}].dropna(), bins='auto')   # 구간 수 자동 결정"
+            + (f"\n# 색 구분: for k, g in sub.groupby({color!r}): plt.hist(g[{col!r}].dropna(), bins='auto', histtype='step', label=k)" if color else "")
+            + f"\nsub[{col!r}].describe()")
     return fig, table, code, notes, f"{col} 히스토그램 ({len(data):,}개 값)"
 
 
@@ -384,6 +398,8 @@ def _box(df, x, y, color, agg, date_unit, top_n):
     if group:
         gs, g_expr, _ = group_key(df, group, date_unit)
         data = pd.DataFrame({"g": gs, "v": df[col]}).dropna()
+        if data.empty:
+            raise UserFacingError(f"{group}와 {col}에 함께 값이 있는 행이 없어 상자그림을 그릴 수 없습니다.")
         order = data["g"].value_counts().index[:min(top_n, 20)]
         if data["g"].nunique() > len(order):
             notes.append(f"'{group}' 그룹이 많아 행 수가 많은 {len(order)}개만 그렸습니다.")
@@ -400,6 +416,8 @@ def _box(df, x, y, color, agg, date_unit, top_n):
         title = f"{group}별 {col}"
     else:
         data = df[col].dropna()
+        if data.empty:
+            raise UserFacingError(f"{col}에 값이 없어 상자그림을 그릴 수 없습니다.")
         s = charts.sample(data)
         ax.boxplot(s, patch_artist=True, flierprops=charts.FLIER,
                    boxprops={"facecolor": "#DCE7F5", "edgecolor": charts.EDGE},
@@ -424,9 +442,9 @@ def _box(df, x, y, color, agg, date_unit, top_n):
 def _heatmap(df, x, y, color, agg, date_unit, top_n):
     num = df.select_dtypes(include="number")
     from .variables import is_strong_id
-    num = num[[c for c in num.columns if not is_strong_id(num[c], c) and num[c].nunique() > 2]]
+    num = num[[c for c in num.columns if not is_strong_id(num[c], c) and num[c].nunique() > 2]]   # 빈 열·상수·0/1 제외
     if num.shape[1] < 2:
-        raise ValueError("상관 히트맵에는 수치형 열이 2개 이상 필요합니다 (ID·0/1 열 제외).")
+        raise UserFacingError("상관 히트맵에는 값이 있는 수치형 열이 2개 이상 필요합니다 (ID·0/1 열 제외).")
     corr = num.corr()
     n = corr.shape[0]
     fig, ax = charts.new_figure(max(5, 0.6 * n + 2.5), max(4, 0.5 * n + 1.8))
