@@ -28,9 +28,10 @@ from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 
+from .limits import HISTORY_MEMORY_LIMIT
 from .scope import IN, Filter
 
-MEMORY_LIMIT = 200
+MEMORY_LIMIT = HISTORY_MEMORY_LIMIT   # 화면(메모리)에 올리는 최근 기록 수 (limits.py)
 KINDS = {"file": "파일", "filter": "필터", "analysis": "분석", "dates": "날짜", "command": "명령", "export": "내보내기"}
 
 

@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
 )
 
+from ...limits import ISSUE_POPUP_MAX
 from ...issues import NEED, collect_issues, summary
 from ..widgets import Popup, Worker, button, label, repolish
 
@@ -58,7 +59,7 @@ class IssuesMixin:
         if n_need:
             head += f" (확인 필요 {n_need}개)"
         pop.box.addWidget(label(head, None))
-        for i in issues[:12]:
+        for i in issues[:ISSUE_POPUP_MAX]:
             row = QHBoxLayout()
             row.setSpacing(8)
             tag = label(i.level, "issue_need" if i.level == NEED else "issue_review")
@@ -72,8 +73,8 @@ class IssuesMixin:
             act.clicked.connect(lambda _=False, a=i.action: (pop.close(), self._issue_action(a)))
             row.addWidget(act, 0, Qt.AlignTop)
             pop.box.addLayout(row)
-        if len(issues) > 12:
-            pop.box.addWidget(label(f"외 {len(issues) - 12}개는 전처리 점검 결과에서 볼 수 있습니다.", "sub"))
+        if len(issues) > ISSUE_POPUP_MAX:
+            pop.box.addWidget(label(f"외 {len(issues) - ISSUE_POPUP_MAX}개는 전처리 점검 결과에서 볼 수 있습니다.", "sub"))
         foot = label("이슈가 있어도 분석은 할 수 있습니다. 결과를 해석할 때 참고하세요.", "sub", True)
         foot.setFixedWidth(440)
         pop.box.addWidget(foot)

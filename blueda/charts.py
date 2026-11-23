@@ -7,6 +7,8 @@
 
 import matplotlib
 
+from .limits import HEAVY_TAIL_RATIO, HIST_MAX_BINS, VIEW_QUANTILES  # 기준값은 limits.py에서
+
 matplotlib.use("Agg")  # 창을 띄우지 않고 그림만 만드는 모드
 
 import matplotlib.pyplot as plt  # noqa: E402
@@ -84,7 +86,7 @@ def heavy_tail(x):
         return False
     lo, hi = x.quantile([0.01, 0.99])
     full = x.max() - x.min()
-    return bool(full > 0 and (hi - lo) < 0.25 * full)
+    return bool(full > 0 and (hi - lo) < HEAVY_TAIL_RATIO * full)
 
 
 def fit_box_axis(ax, values):
@@ -99,7 +101,7 @@ def fit_box_axis(ax, values):
     if (allv > 0).all():
         ax.set_yscale("log")
         return " · 로그 눈금"
-    lo, hi = allv.quantile([0.005, 0.995])
+    lo, hi = allv.quantile(list(VIEW_QUANTILES))
     if hi <= lo:                                          # 값 대부분이 한 값이면 범위를 줄일 수 없음
         return ""
     pad = (hi - lo) * 0.05
@@ -115,7 +117,7 @@ def histogram(series, bins="auto", normal_curve=True):
 
     x = sample(series.dropna())   # 큰 데이터는 표본으로 (평균·표준편차 곡선도 표본 기준)
     suffix = ""
-    lo, hi = x.quantile([0.005, 0.995]) if len(x) else (0, 0)
+    lo, hi = x.quantile(list(VIEW_QUANTILES)) if len(x) else (0, 0)
     if heavy_tail(x) and hi > lo:
         # 꼬리가 아주 길면 거의 모든 값이 막대 하나에 몰려 분포가 안 보임 → 가운데 99%만 그림
         out = int(((x < lo) | (x > hi)).sum())
@@ -125,7 +127,7 @@ def histogram(series, bins="auto", normal_curve=True):
         bins = integer_bins(x)
         if isinstance(bins, str):
             edges = np.histogram_bin_edges(x, bins="auto")
-            bins = edges if len(edges) <= 101 else 100
+            bins = edges if len(edges) <= HIST_MAX_BINS + 1 else HIST_MAX_BINS
     fig, ax = new_figure()
     counts, edges, _ = ax.hist(x, bins=bins, color=PRIMARY, edgecolor="white", label="관측값")
     if normal_curve and len(x) >= 3 and x.std(ddof=1) > 0:

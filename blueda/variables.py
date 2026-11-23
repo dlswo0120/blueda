@@ -9,6 +9,7 @@
 
 import pandas as pd
 
+from .limits import ID_MIN_ROWS  # 기준값은 limits.py에서
 from .result import FAIL, SUCCESS, AnalysisResult
 
 NUMERIC, CATEGORICAL, DATETIME, ID, TEXT = "수치형", "범주형", "날짜", "ID 후보", "텍스트"
@@ -31,7 +32,7 @@ def is_strong_id(s, name=""):
     if not pd.api.types.is_integer_dtype(s) or pd.api.types.is_bool_dtype(s):
         return False
     v = s.dropna()
-    if len(v) < 10 or v.nunique() != len(v):
+    if len(v) < ID_MIN_ROWS or v.nunique() != len(v):
         return False
     if int(v.max()) - int(v.min()) + 1 == len(v):
         return True

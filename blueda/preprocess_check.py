@@ -17,15 +17,15 @@ UNIT_PATTERN = re.compile(r"^\s*-?[\d,]+(\.\d+)?\s*([A-Za-z%가-힣]+)\s*$")
 # 글자 값이 들어 있는 자료형. 메모리 최적화로 바뀐 category도 포함해야 점검이 빠지지 않습니다.
 TEXT_DTYPES = ["object", "string", "category"]
 
+# 판단 기준값(이산값 기준, 표본 크기, 단위 비율, 숫자·날짜 비율)은 limits.py에 있습니다.
+from .limits import DISCRETE_MAX_UNIQUE, NUMERIC_TEXT_RATIO, TYPE_SAMPLE, UNIT_MIN_RATIO  # noqa: E402
+
 # 값 종류가 이 개수 이하인 숫자 열은 IQR 이상치 판단에서 뺍니다 (0/1, 할인율 단계, 수량 등).
 # 값이 몇 단계뿐이면 사분위수가 같은 값에 몰려 정상 값까지 이상치로 잡히기 때문입니다.
-DISCRETE_MAX_UNIQUE = 15
 
 # 타입 점검에서 값 종류가 이보다 많으면 표본으로 비율을 계산합니다.
-TYPE_SAMPLE = 20_000
 
 # 값(고유값 기준) 중 이 비율 이상이 "숫자+단위" 모양일 때만 단위 문제로 봅니다.
-UNIT_MIN_RATIO = 0.5
 
 
 def _text_values(s):
@@ -101,13 +101,13 @@ for col in df.select_dtypes(include=["object", "string", "category"]):  # 글자
             w = None
         num_ratio = _weighted_mean(pd.to_numeric(s, errors="coerce").notna(), w)
         date_ratio = _weighted_mean(pd.to_datetime(s, errors="coerce", format="mixed").notna(), w)
-        if num_ratio >= 0.9 and _looks_like_code(col, s):
+        if num_ratio >= NUMERIC_TEXT_RATIO and _looks_like_code(col, s):
             # 우편번호·ID·전화번호 같은 코드는 숫자로 바꾸면 앞자리 0이 사라지고, 글자가 섞인 값은 결측이 됩니다.
             issues.append(f"{col}: 값의 {num_ratio:.0%}가 숫자지만 코드(우편번호·ID 등)로 보입니다 "
                           "→ 숫자로 바꾸지 말고 문자열로 두세요" + _digit_length_note(df[col].dropna()))
-        elif num_ratio >= 0.9:
+        elif num_ratio >= NUMERIC_TEXT_RATIO:
             issues.append(f"{col}: 문자열이지만 값의 {num_ratio:.0%}가 숫자로 변환됩니다 → 숫자형 변환 검토")
-        elif date_ratio >= 0.9:
+        elif date_ratio >= NUMERIC_TEXT_RATIO:
             issues.append(f"{col}: 문자열이지만 값의 {date_ratio:.0%}가 날짜로 변환됩니다 → 날짜형 변환 검토")
     result = df.dtypes.to_string()
     return "1. 타입", code, result, issues

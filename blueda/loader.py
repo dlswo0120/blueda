@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
+from .limits import CHUNK_ROWS, SNIFF_BYTES  # 기준값은 limits.py에서
+
 CSV_ENCODINGS = ("utf-8", "utf-8-sig", "cp949", "euc-kr")
 
 # 파일 맨 앞 몇 바이트로 실제 형식을 확인 (확장자가 틀린 파일 대비)
@@ -66,7 +68,6 @@ def _zip_kind(path):
     return "unknown"
 
 
-SNIFF_BYTES = 1_000_000  # 인코딩 판별에 쓰는 앞부분 크기 (한글이 뒤에서 처음 나오는 파일 대비)
 
 
 def _decode_sample(data, enc):
@@ -130,7 +131,6 @@ def detect_file(path):
     return info
 
 
-CHUNK_ROWS = 200_000  # CSV를 이만큼씩 나눠 읽음 (진행률 표시·취소 가능)
 
 
 class LoadCancelled(Exception):

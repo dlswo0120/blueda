@@ -7,6 +7,7 @@
 
 from dataclasses import dataclass, field
 
+from .limits import BAR_TOP_N, MAX_PIVOT_COLUMNS, MAX_SERIES, MIN_VALUES  # 기준값은 limits.py에서
 from .interpret import josa
 from .variables import CATEGORICAL, DATETIME, ID, NUMERIC, TEXT, infer_kind
 
@@ -240,12 +241,7 @@ def precheck(key, params, df, kinds):
     return Check(True)
 
 
-MAX_PIVOT_COLUMNS = 50
-
-# 분석별로 값이 있어야 하는 최소 행 수 (표본분포·신뢰구간·t검정은 2, 상관·회귀는 3)
-MIN_VALUES = {"sampling_distribution": 2, "confidence_interval": 2, "one_sample_ttest": 2, "t_test": 4,
-              "anova": 3, "chi_square": 2, "correlation_test": 3, "simple_regression": 3,
-              "multiple_regression": 3, "pivot_table": 1, "crosstab": 1, "chart_builder": 1}
+# MAX_PIVOT_COLUMNS, MIN_VALUES 등 기준값은 limits.py에 있습니다.
 
 
 def _precheck_tables(key, p, df, kinds):
@@ -302,10 +298,10 @@ def _precheck_tables(key, p, df, kinds):
     if c and c == x:
         return Check(False, "X와 색 구분에 서로 다른 열을 고르세요.")
     msgs = []
-    if c and n(c) > 8:
-        msgs.append(f"색 구분 범주가 {n(c)}개라 많은 순 7개 + 기타로 묶습니다.")
-    if t == "막대" and kx == CATEGORICAL and n(x) > 30:
-        msgs.append(f"X 범주가 {n(x)}개라 값이 큰 30개만 그립니다.")
+    if c and n(c) > MAX_SERIES:
+        msgs.append(f"색 구분 범주가 {n(c)}개라 많은 순 {MAX_SERIES - 1}개 + 기타로 묶습니다.")
+    if t == "막대" and kx == CATEGORICAL and n(x) > BAR_TOP_N:
+        msgs.append(f"X 범주가 {n(x)}개라 값이 큰 {BAR_TOP_N}개만 그립니다.")
     if t in ("막대", "선") and not y:
         msgs.append("Y를 고르지 않아 행 개수를 그립니다.")
     return Check(True, " ".join(msgs))

@@ -11,6 +11,8 @@ import numpy as np
 import pandas as pd
 
 from . import charts
+from .limits import (BAR_TOP_N, BOX_MAX_GROUPS, HIST_MAX_BINS, LINE_MARKERS_MAX, LINE_NUMERIC_BIN_FROM,  # 기준값
+                     LINE_NUMERIC_BINS, MAX_PIVOT_COLUMNS, MAX_SERIES, VIEW_QUANTILES)
 from .result import SUCCESS, AnalysisResult, UserFacingError
 
 DATE_UNITS = {"일": "D", "주": "W", "월": "M", "분기": "Q", "연": "Y"}
@@ -21,8 +23,6 @@ CHART_TYPES = ["막대", "선", "산점도", "히스토그램", "상자그림", 
 # 여러 계열 색 (밝은 배경에서 색각 이상 구분 점검 통과). 순서대로 쓰고 돌려쓰지 않습니다.
 SERIES_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
 OTHER_COLOR = "#9AA3AF"
-MAX_SERIES = 8             # 색 구분 계열 최대 수. 넘으면 상위 7개 + 기타
-MAX_PIVOT_COLUMNS = 50     # 피벗 열 방향 범주 최대 수
 TOTAL = "전체"
 
 
@@ -200,7 +200,7 @@ def _colors(names):
     return cols
 
 
-def chart(df, chart_type, x=None, y=None, color=None, agg="합계", date_unit="월", top_n=30):
+def chart(df, chart_type, x=None, y=None, color=None, agg="합계", date_unit="월", top_n=BAR_TOP_N):
     """고른 종류의 차트를 그립니다. 차트를 그린 집계표도 함께 돌려줍니다."""
     fn = {"막대": _bar, "선": _line, "산점도": _scatter, "히스토그램": _hist,
           "상자그림": _box, "상관 히트맵": _heatmap}[chart_type]
@@ -269,9 +269,9 @@ def _line(df, x, y, color, agg, date_unit, top_n):
     xs, x_expr, x_date = group_key(df, x, date_unit)
     ylabel = f"{y} {agg}" if y else "개수"
     notes = []
-    if not x_date and pd.api.types.is_numeric_dtype(df[x]) and df[x].nunique() > 200:
-        xs = pd.cut(df[x], 50)
-        x_expr = f"pd.cut(sub[{x!r}], 50)"
+    if not x_date and pd.api.types.is_numeric_dtype(df[x]) and df[x].nunique() > LINE_NUMERIC_BIN_FROM:
+        xs = pd.cut(df[x], LINE_NUMERIC_BINS)
+        x_expr = f"pd.cut(sub[{x!r}], {LINE_NUMERIC_BINS})"
         notes.append(f"'{x}' 값 종류가 많아 50개 구간으로 묶었습니다.")
     if color:
         cs, c_expr, _ = group_key(df, color, date_unit)
@@ -288,7 +288,7 @@ def _line(df, x, y, color, agg, date_unit, top_n):
     pos = np.arange(len(table))
     for col, cl in zip(table.columns, _colors(table.columns)):
         ax.plot(pos, table[col].to_numpy(dtype=float), color=cl if color else charts.PRIMARY,
-                linewidth=2, marker="o" if len(table) <= 40 else None, markersize=4, label=str(col))
+                linewidth=2, marker="o" if len(table) <= LINE_MARKERS_MAX else None, markersize=4, label=str(col))
     step = max(1, len(pos) // 12)
     ax.set_xticks(pos[::step])
     ax.set_xticklabels(labels[::step], rotation=45 if len(pos) > 6 else 0, ha="right" if len(pos) > 6 else "center")
@@ -349,7 +349,7 @@ def _hist(df, x, y, color, agg, date_unit, top_n):
     s = charts.sample(data)
     notes = []
     fig, ax = charts.new_figure(7, 4.2)
-    lo, hi = data[col].quantile([0.005, 0.995])
+    lo, hi = data[col].quantile(list(VIEW_QUANTILES))
     if heavy_tail(data[col]) and hi > lo:
         # 꼬리가 아주 길면 대부분의 값이 막대 하나에 몰려 분포가 안 보입니다 → 가운데 99%만 그림
         out = int(((data[col] < lo) | (data[col] > hi)).sum())
@@ -359,8 +359,8 @@ def _hist(df, x, y, color, agg, date_unit, top_n):
     bins = charts.integer_bins(s[col])
     if isinstance(bins, str):
         bins = np.histogram_bin_edges(s[col], bins="auto")
-        if len(bins) > 101:
-            bins = np.histogram_bin_edges(s[col], bins=100)
+        if len(bins) > HIST_MAX_BINS + 1:
+            bins = np.histogram_bin_edges(s[col], bins=HIST_MAX_BINS)
     if color:
         cs, note = _limit_series(s[color].astype(object))
         notes += [note] if note else []
@@ -394,7 +394,7 @@ def _box(df, x, y, color, agg, date_unit, top_n):
         data = pd.DataFrame({"g": gs, "v": df[col]}).dropna()
         if data.empty:
             raise UserFacingError(f"{group}와 {col}에 함께 값이 있는 행이 없어 상자그림을 그릴 수 없습니다.")
-        order = data["g"].value_counts().index[:min(top_n, 20)]
+        order = data["g"].value_counts().index[:min(top_n, BOX_MAX_GROUPS)]
         if data["g"].nunique() > len(order):
             notes.append(f"'{group}' 그룹이 많아 행 수가 많은 {len(order)}개만 그렸습니다.")
         s = charts.sample(data)
