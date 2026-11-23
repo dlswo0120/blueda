@@ -21,7 +21,8 @@ from ..scope import AnalysisScope
 from ..settings import EDITABLE, load_settings, save_settings
 from . import theme
 from .pages import MainPage, StartPage
-from .widgets import Worker, button, label
+from ..issues import NEED, collect_issues, summary
+from .widgets import Popup, Worker, button, label, repolish
 
 HELP = [
     ("help", "명령 목록"),
@@ -212,6 +213,12 @@ class MainWindow(QMainWindow):
         lay.addWidget(label("BLUEDA", "brand"))
         self.file_label = label("", "muted")
         lay.addWidget(self.file_label)
+        # 파일 이슈 알림: 파일을 열면 뒤에서 전처리 점검을 돌려 이슈가 있을 때만 나타남
+        self.issue_btn = button("", "issue")
+        self.issue_btn.setToolTip("이 파일에서 찾은 이슈 보기")
+        self.issue_btn.clicked.connect(self.show_issues)
+        self.issue_btn.hide()
+        lay.addWidget(self.issue_btn)
         lay.addStretch(1)
         lay.addWidget(label("오프라인", "sub"))
         self.theme_btn = button("", None)
@@ -262,6 +269,7 @@ class MainWindow(QMainWindow):
                 self.bd.config = self.cfg
             self.apply_theme()
             self._save_settings()
+            self.refresh_issues()                       # IQR 배수 등이 바뀌면 이슈도 다시 계산
             self.log("INFO", "설정 저장: 유의수준 {a}, IQR×{k}, |z|>{z}, 차트 표본 {n:,}행".format(
                 a=self.cfg.alpha, k=self.cfg.outlier_iqr_k, z=self.cfg.z_threshold, n=self.cfg.chart_sample_size))
 
@@ -368,6 +376,64 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(m)
         self.choose_method("describe")
         self.offer_date_conversion()
+        self.refresh_issues()
+
+    # ------------------------------------------------------------------ [!] 파일 이슈
+    def refresh_issues(self):
+        """전처리 점검을 뒤에서 돌려 이슈 버튼을 갱신합니다 (화면이 멈추지 않게 별도 스레드)."""
+        if self.df is None:
+            return
+        self.issues = []
+        w = Worker(collect_issues, self.df, self.cfg.outlier_iqr_k, self.cfg.missing_warn_ratio)
+        w.done.connect(self._issues_ready)
+        w.failed.connect(lambda msg: self.log("FAIL", f"이슈 점검 실패: {msg}"))
+        self.issue_worker = w                      # 참조를 잡아 두어야 스레드가 중간에 사라지지 않음
+        w.start()
+
+    def _issues_ready(self, issues):
+        self.issues = issues
+        text, level = summary(issues)
+        self.issue_btn.setVisible(bool(text))
+        self.issue_btn.setText(text)
+        self.issue_btn.setProperty("level", "need" if level == NEED else "review")
+        repolish(self.issue_btn)
+
+    def show_issues(self):
+        issues = getattr(self, "issues", [])
+        pop = Popup(460, self)
+        n_need = sum(i.level == NEED for i in issues)
+        head = f"이 파일의 이슈 {len(issues)}개"
+        if n_need:
+            head += f" (확인 필요 {n_need}개)"
+        pop.box.addWidget(label(head, None))
+        for i in issues[:12]:
+            row = QHBoxLayout()
+            row.setSpacing(8)
+            tag = label(i.level, "issue_need" if i.level == NEED else "issue_review")
+            tag.setFixedWidth(64)
+            row.addWidget(tag, 0, Qt.AlignTop)
+            text = label(i.text, None, True)
+            text.setFixedWidth(290)              # 너비를 정해야 줄바꿈 높이가 맞게 계산되어 잘리지 않음
+            row.addWidget(text, 1)
+            act = button("날짜로 바꾸기" if i.action == "dates" else "점검 보기", "link")
+            act.setFixedWidth(84)
+            act.clicked.connect(lambda _=False, a=i.action: (pop.close(), self._issue_action(a)))
+            row.addWidget(act, 0, Qt.AlignTop)
+            pop.box.addLayout(row)
+        if len(issues) > 12:
+            pop.box.addWidget(label(f"외 {len(issues) - 12}개는 전처리 점검 결과에서 볼 수 있습니다.", "sub"))
+        foot = label("이슈가 있어도 분석은 할 수 있습니다. 결과를 해석할 때 참고하세요.", "sub", True)
+        foot.setFixedWidth(440)
+        pop.box.addWidget(foot)
+        self.issue_popup = pop
+        pop.show_below(self.issue_btn)
+
+    def _issue_action(self, action):
+        if action == "dates":
+            self.offer_date_conversion(announce_none=True)
+        else:
+            self.choose_method("check")
+            self.run_analysis("check", {})
 
     # ------------------------------------------------------------------ 날짜형 변환 (사용자 선택)
     def offer_date_conversion(self, announce_none=False):
@@ -402,6 +468,7 @@ class MainWindow(QMainWindow):
                 self.kinds[c] = "날짜"
             self.main.filters.set_data(self.df, self.kinds, self.cfg.dropdown_max_values)
             self._refresh_data_tab()
+            self.refresh_issues()                       # 날짜를 바꿨으니 이슈 다시 계산
 
     # ------------------------------------------------------------------ 범위·메뉴·점검
     def current_scope(self, for_method=None, params=None):

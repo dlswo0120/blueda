@@ -59,6 +59,11 @@ def stylesheet(dark=False):
     QPushButton[kind="primary"] {{ background: {ACCENT}; border: none; color: #FFFFFF; }}
     QPushButton[kind="primary"]:hover {{ background: {ACCENT_HOVER}; }}
     QPushButton[kind="primary"]:disabled {{ background: {DISABLED}; color: #FFFFFF; }}
+    QPushButton[kind="issue"] {{ background: #FFF4E5; border: 1px solid #F1C48A; color: {WARN};
+        border-radius: 6px; padding: 2px 10px; font-size: 12px; min-height: 22px; }}
+    QPushButton[kind="issue"][level="review"] {{ background: #F3F4F6; border: 1px solid #D1D5DB; color: {SUB}; }}
+    QLabel[role="issue_need"] {{ color: {WARN}; font-size: 12px; }}
+    QLabel[role="issue_review"] {{ color: {SUB}; font-size: 12px; }}
     QPushButton[kind="link"] {{ background: transparent; border: none; color: {ACCENT}; padding: 0 6px; font-size: 12px; }}
     QPushButton[kind="ghost"] {{ background: transparent; border: none; color: {SUB}; padding: 0 8px; font-size: 12px; }}
     QPushButton[kind="ghost"]:checked {{ color: {TEXT}; font-weight: 700; }}

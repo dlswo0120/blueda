@@ -192,3 +192,14 @@ def test_large_start_is_fast(qtbot, tmp_path):
     t = time.time()
     w.start_analysis()
     assert time.time() - t < 1.5
+
+
+def test_issue_button_appears(qtbot, win):
+    """파일을 열면 뒤에서 점검해 [!] 버튼이 생긴다"""
+    qtbot.waitUntil(lambda: hasattr(win, "issue_worker") and not win.issue_worker.isRunning(), timeout=20000)
+    qtbot.waitUntil(lambda: win.issue_btn.isVisible() or not win.issues, timeout=5000)
+    if win.issues:
+        assert win.issue_btn.text().startswith("[!] 이슈")
+        win.show_issues()
+        assert win.issue_popup.isVisible()
+        win.issue_popup.close()

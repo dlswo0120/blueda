@@ -22,6 +22,9 @@ TEXT_DTYPES = ["object", "string", "category"]
 # 값이 몇 단계뿐이면 사분위수가 같은 값에 몰려 정상 값까지 이상치로 잡히기 때문입니다.
 DISCRETE_MAX_UNIQUE = 15
 
+# 타입 점검에서 값 종류가 이보다 많으면 표본으로 비율을 계산합니다.
+TYPE_SAMPLE = 20_000
+
 # 값(고유값 기준) 중 이 비율 이상이 "숫자+단위" 모양일 때만 단위 문제로 봅니다.
 UNIT_MIN_RATIO = 0.5
 
@@ -92,6 +95,11 @@ for col in df.select_dtypes(include=["object", "string", "category"]):  # 글자
         if s.empty:
             continue
         w = _row_weights(df[col])                       # category는 고유값마다 행 수로 가중 → 행 기준 비율
+        if len(s) > TYPE_SAMPLE:
+            # 값 종류가 아주 많으면(메모·주소 등) 모든 값을 날짜로 읽어보는 데 몇 초가 걸립니다.
+            # 비율 판단에는 무작위 표본으로 충분하므로 행 기준 표본 2만 개로 계산합니다.
+            s = df[col].dropna().sample(TYPE_SAMPLE, random_state=0).astype(str).str.replace(",", "")
+            w = None
         num_ratio = _weighted_mean(pd.to_numeric(s, errors="coerce").notna(), w)
         date_ratio = _weighted_mean(pd.to_datetime(s, errors="coerce", format="mixed").notna(), w)
         if num_ratio >= 0.9 and _looks_like_code(col, s):
