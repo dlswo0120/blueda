@@ -13,6 +13,11 @@ from .variables import CATEGORICAL, DATETIME, ID, NUMERIC, TEXT, infer_kind
 # 칸 종류
 COL_NUM, COL_CAT, COL_ANY, COL_MULTI, NUMBER, INT, VALUE = (
     "numeric", "categorical", "any", "multi", "number", "int", "value")
+COL_GROUP = "group"    # 묶을 기준: 범주형 또는 날짜
+COL_XY = "xy"          # 차트 X축: 수치·범주·날짜
+CHOICE = "choice"      # 정해진 선택지
+
+COLUMN_KINDS = (COL_NUM, COL_CAT, COL_ANY, COL_GROUP, COL_XY)   # 열 하나를 고르는 칸
 
 
 @dataclass
@@ -21,6 +26,10 @@ class Param:
     label: str         # 화면 표시 이름
     kind: str          # 위 칸 종류
     default: object = None
+    optional: bool = False         # 비워도 되는 칸 ("없음" 선택 가능)
+    choices: tuple = ()            # CHOICE 칸의 선택지
+    show_if: dict = None           # {"chart_type": ("막대", "선")}: 다른 칸 값에 따라 보이기
+    date_only: bool = False        # 고른 열 중 날짜가 있을 때만 보이기 (날짜 단위)
 
 
 @dataclass
@@ -34,12 +43,32 @@ class Method:
     available: bool = True
 
 
+AGG_CHOICES = ("합계", "평균", "개수", "중앙값", "최솟값", "최댓값")
+DATE_CHOICES = ("일", "주", "월", "분기", "연")
+CHART_CHOICES = ("막대", "선", "산점도", "히스토그램", "상자그림", "상관 히트맵")
+
 GROUPS = ["표·차트 만들기", "데이터 이해", "기술통계", "추론통계", "이변량", "다변량"]
 
 METHODS = [
-    Method("pivot_table", "표·차트 만들기", "피벗 표", "행·열·값·집계를 골라 요약표", available=False),
-    Method("crosstab", "표·차트 만들기", "교차표", "두 범주의 개수·비율 표", available=False),
-    Method("chart_builder", "표·차트 만들기", "차트", "종류·X·Y를 골라 그리기", available=False),
+    Method("pivot_table", "표·차트 만들기", "피벗 표", "행·열·값·집계를 골라 요약표",
+           [Param("rows", "행 기준", COL_GROUP),
+            Param("columns", "열 기준", COL_GROUP, optional=True),
+            Param("values", "값 (수치형)", COL_NUM, optional=True),
+            Param("agg", "집계", CHOICE, "합계", choices=AGG_CHOICES),
+            Param("date_unit", "날짜 단위", CHOICE, "월", choices=DATE_CHOICES, date_only=True)],
+           question="그룹별 합계·평균을 표로 보고 싶어요"),
+    Method("crosstab", "표·차트 만들기", "교차표", "두 범주의 개수·비율 표",
+           [Param("rows", "행 범주", COL_GROUP), Param("columns", "열 범주", COL_GROUP),
+            Param("normalize", "표시", CHOICE, "개수", choices=("개수", "행 %", "열 %", "전체 %")),
+            Param("date_unit", "날짜 단위", CHOICE, "월", choices=DATE_CHOICES, date_only=True)]),
+    Method("chart_builder", "표·차트 만들기", "차트", "종류·X·Y를 골라 그리기",
+           [Param("chart_type", "종류", CHOICE, "막대", choices=CHART_CHOICES),
+            Param("x", "X", COL_XY, optional=True, show_if={"chart_type": ("막대", "선", "산점도", "히스토그램", "상자그림")}),
+            Param("y", "Y (수치형)", COL_NUM, optional=True, show_if={"chart_type": ("막대", "선", "산점도", "상자그림")}),
+            Param("color", "색 구분", COL_CAT, optional=True, show_if={"chart_type": ("막대", "선", "산점도", "히스토그램")}),
+            Param("agg", "집계", CHOICE, "합계", choices=AGG_CHOICES, show_if={"chart_type": ("막대", "선")}),
+            Param("date_unit", "날짜 단위", CHOICE, "월", choices=DATE_CHOICES, date_only=True)],
+           question="차트로 그려 보고 싶어요"),
 
     Method("variable_types", "데이터 이해", "변수 종류", "열마다 수치·범주 판정"),
     Method("analysis_unit", "데이터 이해", "분석 단위", "한 행이 무엇인지 확인",
@@ -87,7 +116,29 @@ ALLOWED = {
     COL_CAT: {CATEGORICAL},
     COL_ANY: {NUMERIC, CATEGORICAL, DATETIME, ID, TEXT},
     COL_MULTI: {NUMERIC, CATEGORICAL},
+    COL_GROUP: {CATEGORICAL, DATETIME},
+    COL_XY: {NUMERIC, CATEGORICAL, DATETIME},
 }
+
+
+def visible(param, params, kinds=None, method=None):
+    """이 칸을 지금 보여줄지 (차트 종류에 따라, 날짜 열을 골랐는지에 따라).
+    method: 이 칸이 속한 분석. 같은 모양의 칸(날짜 단위)이 여러 분석에 있으므로 꼭 넘깁니다."""
+    if param.show_if:
+        for k, vals in param.show_if.items():
+            if params.get(k) not in vals:
+                return False
+    if param.date_only:
+        kinds = kinds or {}
+        m = method or next((m for m in METHODS if any(q is param for q in m.params)), None)
+        cols = [params.get(p.name) for p in (m.params if m else [])
+                if p.kind in COLUMN_KINDS and visible_basic(p, params)]
+        return any(c is not None and kinds.get(c) == DATETIME for c in cols)
+    return True
+
+
+def visible_basic(param, params):
+    return not param.show_if or all(params.get(k) in v for k, v in param.show_if.items())
 
 
 def column_kinds(df, overrides=None, max_categories=10):
@@ -126,13 +177,15 @@ def precheck(key, params, df, kinds):
         return Check(False, "아직 지원하지 않는 기능입니다.")
     for p in m.params:
         v = params.get(p.name)
-        if p.kind in (COL_NUM, COL_CAT, COL_ANY) and not v:
+        if not visible_basic(p, params):
+            continue
+        if p.kind in COLUMN_KINDS and not v and not p.optional:
             return Check(False, f"{_name(p.label)} 고르세요.")
         if p.kind == COL_MULTI and not v:
             return Check(False, f"{_name(p.label)} 1개 이상 고르세요.")
         if p.kind in (NUMBER, INT, VALUE) and v in (None, ""):
             return Check(False, f"{_name(p.label)} 입력하세요.")
-        cols = v if isinstance(v, list) else [v] if p.kind in (COL_NUM, COL_CAT, COL_ANY) else []
+        cols = v if isinstance(v, list) else [v] if (p.kind in COLUMN_KINDS and v) else []
         for c in cols:
             if c not in df.columns:
                 return Check(False, f"'{c}' 열이 분석 범위에 없습니다. 왼쪽 열 목록에서 선택하세요.")
@@ -140,6 +193,9 @@ def precheck(key, params, df, kinds):
                 return Check(False, f"{josa(c, '은/는')} {kinds.get(c)}이라 {p.label.split(' (')[0]} 칸에 쓸 수 없습니다.")
     if len(df) == 0:
         return Check(False, "조건에 맞는 행이 없습니다. 행 조건을 넓혀 주세요.")
+
+    if key in ("pivot_table", "crosstab", "chart_builder"):
+        return _precheck_tables(key, params, df, kinds)
 
     if key in ("t_test", "anova"):
         k = df[params["group_col"]].dropna().nunique()
@@ -165,9 +221,79 @@ def precheck(key, params, df, kinds):
     return Check(True)
 
 
+MAX_PIVOT_COLUMNS = 50
+
+
+def _precheck_tables(key, p, df, kinds):
+    """표·차트 만들기 실행 전 점검."""
+    def n(c):
+        return df[c].nunique()
+
+    if key == "pivot_table":
+        if p.get("columns") and p["columns"] == p["rows"]:
+            return Check(False, "행 기준과 열 기준에 서로 다른 열을 고르세요.")
+        if p.get("columns") and kinds.get(p["columns"]) != DATETIME and n(p["columns"]) > MAX_PIVOT_COLUMNS:
+            return Check(False, f"{josa(p['columns'], '은/는')} 범주가 {n(p['columns'])}개라 표가 너무 넓어집니다. "
+                                f"행 기준으로 옮기거나 조건으로 줄이세요 ({MAX_PIVOT_COLUMNS}개 이하).")
+        if not p.get("values"):
+            return Check(True, "값을 고르지 않아 행 개수를 셉니다.")
+        if p.get("agg") == "개수":
+            return Check(True, "집계가 '개수'면 값이 비어 있지 않은 행 수를 셉니다.")
+        return Check(True)
+    if key == "crosstab":
+        if p["rows"] == p["columns"]:
+            return Check(False, "서로 다른 두 열을 고르세요.")
+        big = [c for c in (p["rows"], p["columns"]) if kinds.get(c) != DATETIME and n(c) > MAX_PIVOT_COLUMNS]
+        if big:
+            return Check(False, f"{josa(big[0], '은/는')} 범주가 {n(big[0])}개라 표가 너무 큽니다. 조건으로 줄이세요 ({MAX_PIVOT_COLUMNS}개 이하).")
+        return Check(True, "두 범주가 관련 있는지는 카이제곱 검정으로 확인할 수 있습니다.", "chi_square")
+
+    t, x, y, c = p.get("chart_type"), p.get("x"), p.get("y"), p.get("color")
+    kx = kinds.get(x)
+    if t == "상관 히트맵":
+        nums = [col for col in df.columns if kinds.get(col) == NUMERIC]
+        if len(nums) < 2:
+            return Check(False, "상관 히트맵은 왼쪽 열 목록에서 수치형 열을 2개 이상 고르면 그립니다.")
+        return Check(True, f"왼쪽에서 고른 수치형 열 {len(nums)}개로 그립니다.")
+    if t in ("막대", "선", "산점도", "히스토그램") and not x:
+        return Check(False, "X를 고르세요.")
+    if t == "막대" and kx == NUMERIC:
+        return Check(False, f"{josa(x, '은/는')} 수치형입니다. 막대는 범주·날짜 X에 쓰고, 수치 분포는 히스토그램을 쓰세요.")
+    if t == "선" and kx == CATEGORICAL:
+        return Check(False, f"{josa(x, '은/는')} 범주형입니다. 선은 날짜·수치 X에 쓰고, 범주 비교는 막대를 쓰세요.")
+    if t in ("산점도", "히스토그램") and kx != NUMERIC:
+        return Check(False, f"{t}에는 수치형 X가 필요합니다.")
+    if t == "산점도":
+        if not y:
+            return Check(False, "Y를 고르세요.")
+        if x == y:
+            return Check(False, "X와 Y에 서로 다른 열을 고르세요.")
+    if t == "상자그림":
+        if not y:
+            return Check(False, "Y(수치형)를 고르세요. X는 그룹으로 나눠 볼 때만 고릅니다.")
+        if x and kx == NUMERIC:
+            return Check(False, "상자그림의 X는 그룹(범주·날짜)이어야 합니다. 비워 두면 Y 하나만 그립니다.")
+    if c and c == x:
+        return Check(False, "X와 색 구분에 서로 다른 열을 고르세요.")
+    msgs = []
+    if c and n(c) > 8:
+        msgs.append(f"색 구분 범주가 {n(c)}개라 많은 순 7개 + 기타로 묶습니다.")
+    if t == "막대" and kx == CATEGORICAL and n(x) > 30:
+        msgs.append(f"X 범주가 {n(x)}개라 값이 큰 30개만 그립니다.")
+    if t in ("막대", "선") and not y:
+        msgs.append("Y를 고르지 않아 행 개수를 그립니다.")
+    return Check(True, " ".join(msgs))
+
+
 def run(bd, key, params):
     """메뉴 key와 칸 값으로 Blueda 메서드를 실행합니다."""
     p = dict(params)
+    if key in ("pivot_table", "crosstab", "chart_builder"):
+        m = BY_KEY[key]
+        p = {q.name: p.get(q.name) for q in m.params if visible_basic(q, params)}
+        if key == "chart_builder":
+            return bd.chart(**p)
+        return getattr(bd, key)(**p)
     if key == "describe":
         return bd.describe()
     if key == "check":

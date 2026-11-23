@@ -170,6 +170,9 @@ def test_every_available_method_runs(df, cfg):
         "correlation_test": {"x": "나이", "y": "처리일수"},
         "simple_regression": {"x": "나이", "y": "처리일수"},
         "multiple_regression": {"y": "처리일수", "xs": ["나이", "시도"]},
+        "pivot_table": {"rows": "시도", "columns": "성별", "values": "처리일수", "agg": "평균"},
+        "crosstab": {"rows": "시도", "columns": "성별", "normalize": "행 %"},
+        "chart_builder": {"chart_type": "막대", "x": "시도", "y": "처리일수", "agg": "평균"},
     }
     for m in methods.METHODS:
         if not m.available:

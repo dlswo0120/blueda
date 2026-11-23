@@ -239,3 +239,36 @@ def test_convert_dates_then_monthly_matches_practice():
     from blueda.scope import Filter
     mask, _ = Filter("Order Date", "between", lo="2025-01-01", hi="2025-12-31").mask_and_code(bd.df)
     assert int(mask.sum()) == int(raw["Order Date"].between("2025-01-01", "2025-12-31").sum())
+
+
+# ── 표·차트 만들기 (v0.5.0) ───────────────────────────────
+def test_pivot_region_category_sales(store):
+    bd, raw = store
+    t = _quiet(bd.pivot_table, "Region", "Category", "Sales", "합계").tables["피벗 표"]
+    exp = pd.pivot_table(raw, index="Region", columns="Category", values="Sales", aggfunc="sum",
+                         margins=True, margins_name="전체")
+    np.testing.assert_allclose(t.loc[exp.index, exp.columns].to_numpy(), exp.to_numpy(), atol=1e-3)
+
+
+def test_crosstab_type_failure_rate(ai4i):
+    """Type별 고장률(행 %) — 실습의 pd.crosstab(normalize='index')와 같은 값"""
+    bd, raw = ai4i
+    r = _quiet(bd.crosstab, "Type", "Machine failure", "행 %")
+    exp = (pd.crosstab(raw["Type"], raw["Machine failure"], normalize="index", margins=True,
+                       margins_name="전체") * 100).round(1)
+    got = r.tables["교차표 (행 %)"]
+    np.testing.assert_allclose(got.loc[exp.index, exp.columns].to_numpy(), exp.to_numpy(), atol=0.05)
+
+
+def test_monthly_sales_line(store):
+    bd, raw = store
+    t = _quiet(bd.chart, "선", x="Order Date", y="Sales", agg="합계", date_unit="월").tables["차트 데이터"]
+    exp = raw.groupby(pd.to_datetime(raw["Order Date"]).dt.to_period("M").astype(str))["Sales"].sum()
+    np.testing.assert_allclose(t.loc[exp.index].iloc[:, 0], exp.round(4), atol=1e-3)
+
+
+def test_subcategory_profit_bar_sorted(store):
+    bd, raw = store
+    t = _quiet(bd.chart, "막대", x="Sub-Category", y="Profit", agg="합계").tables["차트 데이터"]
+    exp = raw.groupby("Sub-Category")["Profit"].sum().sort_values(ascending=False)
+    assert list(t.index) == list(exp.index)

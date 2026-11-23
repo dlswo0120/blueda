@@ -835,7 +835,11 @@ class AnalysisBar(QWidget):
         while self.fields.count():
             item = self.fields.takeAt(0)
             if item.widget():
-                item.widget().deleteLater()
+                # deleteLater만 하면 실제로 지워지기 전까지 이전 칸이 화면에 남아 새 칸과 겹칩니다.
+                old = item.widget()
+                old.hide()
+                old.setParent(None)
+                old.deleteLater()
             elif item.layout():
                 lay = item.layout()
                 while lay.count():
@@ -843,23 +847,36 @@ class AnalysisBar(QWidget):
                     if w:
                         w.deleteLater()
         self.widgets = {}
+        self.kinds = kinds
         for p in method.params:
-            col = QVBoxLayout()
+            box = QWidget()                       # 칸 하나 (숨기기·보이기 단위)
+            col = QVBoxLayout(box)
+            col.setContentsMargins(0, 0, 0, 0)
             col.setSpacing(4)
             col.addWidget(label(p.label, "sub"))
-            if p.kind in (M.COL_NUM, M.COL_CAT, M.COL_ANY):
+            if p.kind in M.COLUMN_KINDS:
                 w = QComboBox()
-                w.setMinimumWidth(140)
+                w.setMinimumWidth(130)
                 options = M.columns_for(p.kind, kinds)
-                if options:
+                if p.optional:
+                    w.addItem("없음", None)
+                elif options:
                     w.addItem("선택", None)
-                    for c in options:
-                        w.addItem(str(c), c)
-                else:
+                if not options and not p.optional:
                     w.addItem("맞는 열 없음", None)
+                for c in options:
+                    w.addItem(str(c), c)
                 w.currentIndexChanged.connect(self._changed)
                 if p.name == "column" and method.key == "ci_proportion":
                     w.currentIndexChanged.connect(lambda _=0, df=df: self._fill_values(df))
+            elif p.kind == M.CHOICE:
+                w = QComboBox()
+                w.setMinimumWidth(96)
+                for v in p.choices:
+                    w.addItem(str(v), v)
+                if p.default in p.choices:
+                    w.setCurrentIndex(list(p.choices).index(p.default))
+                w.currentIndexChanged.connect(self._changed)
             elif p.kind == M.COL_MULTI:
                 w = MultiColumnButton()
                 w.set_options(M.columns_for(p.kind, kinds))
@@ -874,22 +891,29 @@ class AnalysisBar(QWidget):
                 w.setValidator(QIntValidator(2, 10_000_000) if p.kind == M.INT else QDoubleValidator())
                 w.textChanged.connect(self._changed)
             col.addWidget(w)
-            self.fields.addLayout(col)
-            self.widgets[p.name] = (p, w)
+            self.fields.addWidget(box)
+            self.widgets[p.name] = (p, w, box)
+        self._update_visibility()
         self._changed()
 
+    def _update_visibility(self):
+        """차트 종류·날짜 열 선택에 따라 필요한 칸만 보이게 합니다."""
+        raw = self._raw_params()
+        for name, (p, w, box) in self.widgets.items():
+            box.setVisible(M.visible(p, raw, getattr(self, "kinds", {}), self.method))
+
     def _fill_values(self, df):
-        _, cw = self.widgets["column"]
-        _, vw = self.widgets["category"]
+        _, cw, _ = self.widgets["column"]
+        _, vw, _ = self.widgets["category"]
         vw.clear()
         c = cw.currentData()
         if c is not None:
             for v in df[c].value_counts().head(200).index:
                 vw.addItem(str(v), v)
 
-    def params(self):
+    def _raw_params(self):
         out = {}
-        for name, (p, w) in self.widgets.items():
+        for name, (p, w, _) in self.widgets.items():
             if isinstance(w, MultiColumnButton):
                 out[name] = list(w.columns)
             elif isinstance(w, QComboBox):
@@ -898,17 +922,25 @@ class AnalysisBar(QWidget):
                 out[name] = w.text().strip()
         return out
 
+    def params(self):
+        """보이는 칸의 값만 (숨은 칸은 분석에 쓰지 않음)."""
+        raw = self._raw_params()
+        return {name: raw[name] for name, (p, _, box) in self.widgets.items()
+                if M.visible(p, raw, getattr(self, "kinds", {}), self.method)}
+
     def needed_columns(self):
         cols = []
-        for name, (p, _) in self.widgets.items():
-            v = self.params()[name]
-            if p.kind in (M.COL_NUM, M.COL_CAT, M.COL_ANY) and v:
+        for name, v in self.params().items():
+            p = self.widgets[name][0]
+            if p.kind in M.COLUMN_KINDS and v:
                 cols.append(v)
             elif p.kind == M.COL_MULTI:
                 cols += v
         return list(dict.fromkeys(cols))
 
     def _changed(self, *_):
+        if self.widgets:
+            self._update_visibility()
         self._timer.start()
 
     def set_check(self, check, running=False):

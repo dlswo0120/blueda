@@ -98,6 +98,24 @@ print(df.head())                                    # 앞 5행 미리보기'''
         except Exception as e:  # 실패해도 툴이 멈추지 않고 FAIL로 기록
             return self._record(AnalysisResult(getattr(func, "__name__", "분석"), FAIL, f"{type(e).__name__}: {e}"))
 
+    # ---------- 표·차트 만들기 ----------
+    def pivot_table(self, rows, columns=None, values=None, agg="합계", date_unit="월"):
+        """피벗 표. values가 없으면 행 개수를 셉니다. agg: 합계·평균·개수·중앙값·최솟값·최댓값"""
+        from . import tables
+        return self._run(tables.pivot_table, rows=rows, columns=columns or None, values=values or None,
+                         agg=agg, date_unit=date_unit)
+
+    def crosstab(self, rows, columns, normalize="개수", date_unit="월"):
+        """교차표. normalize: 개수·행 %·열 %·전체 %"""
+        from . import tables
+        return self._run(tables.crosstab, rows=rows, columns=columns, normalize=normalize, date_unit=date_unit)
+
+    def chart(self, chart_type, x=None, y=None, color=None, agg="합계", date_unit="월"):
+        """차트 만들기. chart_type: 막대·선·산점도·히스토그램·상자그림·상관 히트맵"""
+        from . import tables
+        return self._run(tables.chart, chart_type=chart_type, x=x or None, y=y or None, color=color or None,
+                         agg=agg, date_unit=date_unit)
+
     # ---------- 1) 기술통계 ----------
     def describe(self, kind="all", with_charts=True):
         """kind: 'numeric' / 'categorical' / 'all'"""
@@ -198,7 +216,8 @@ print(df.head())                                    # 앞 5행 미리보기'''
                    "one_sample_ttest": self.one_sample_ttest, "t_test": self.t_test, "anova": self.anova,
                    "chi_square": self.chi_square, "correlation_test": self.correlation_test,
                    "simple_regression": self.simple_regression, "multiple_regression": self.multiple_regression,
-                   "analysis_unit": self.analysis_unit}
+                   "analysis_unit": self.analysis_unit, "pivot_table": self.pivot_table,
+                   "crosstab": self.crosstab, "chart_builder": self.chart}
         if registry.is_available(key) and key in methods:
             import inspect
             try:

@@ -117,9 +117,9 @@ def test_range_popup_fits_and_validates(qtbot, win):
 
 
 def test_unsupported_method_message(qtbot, win):
-    win.choose_method("pivot_table")
+    win.choose_method("logistic_regression")          # 아직 준비 중인 기능
     r = win.bd.results[-1]
-    assert r.status == "UNSUPPORTED" and "3+단계 예정" in r.message and r.name == "피벗 표"
+    assert r.status == "UNSUPPORTED" and r.name.startswith("로지스틱 회귀")
 
 
 def test_data_tab_lazy_loading_and_sort(qtbot, win):
