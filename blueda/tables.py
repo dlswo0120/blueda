@@ -163,14 +163,8 @@ def _comma_axis(axis):
 
 
 def heavy_tail(x):
-    """꼬리가 아주 긴지: 1~99% 범위가 전체 범위의 25%도 안 되면 True
-    (정규분포는 약 60%, 지수분포도 약 50%라 걸리지 않고, 극단값 몇 개가 축을 늘린 경우만 걸림)"""
-    x = pd.Series(x).dropna()
-    if len(x) < 20:
-        return False
-    lo, hi = x.quantile([0.01, 0.99])
-    full = x.max() - x.min()
-    return bool(full > 0 and (hi - lo) < 0.25 * full)
+    """charts.heavy_tail과 같음 (차트 공통 기준)."""
+    return charts.heavy_tail(x)
 
 
 def _style(ax, title, xlabel="", ylabel=""):
@@ -355,9 +349,9 @@ def _hist(df, x, y, color, agg, date_unit, top_n):
     s = charts.sample(data)
     notes = []
     fig, ax = charts.new_figure(7, 4.2)
-    if heavy_tail(data[col]):
+    lo, hi = data[col].quantile([0.005, 0.995])
+    if heavy_tail(data[col]) and hi > lo:
         # 꼬리가 아주 길면 대부분의 값이 막대 하나에 몰려 분포가 안 보입니다 → 가운데 99%만 그림
-        lo, hi = data[col].quantile([0.005, 0.995])
         out = int(((data[col] < lo) | (data[col] > hi)).sum())
         s = s[(s[col] >= lo) & (s[col] <= hi)]
         notes.append(f"값의 꼬리가 아주 길어 하위 0.5%~상위 0.5% 범위({lo:,.2f} ~ {hi:,.2f})만 그렸습니다. "

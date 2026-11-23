@@ -38,7 +38,8 @@ def _group_boxplot(df, group_col, value_col, title):
     ax.set_xticks(range(1, len(names) + 1), [str(n) for n in names])
     ax.set_xlabel(group_col)
     ax.set_ylabel(value_col)
-    ax.set_title(title)
+    suffix = charts.fit_box_axis(ax, values)              # 꼬리가 긴 분포면 로그 눈금 또는 가운데 99%
+    ax.set_title(title + suffix, fontsize=10 if suffix else None)
     fig.tight_layout()
     charts.plt.close(fig)
     return fig

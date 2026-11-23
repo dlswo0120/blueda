@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import methods as M
+from ..interpret import josa
 from ..variables import KINDS
 from . import theme
 from .models import DataFrameModel
@@ -992,7 +993,7 @@ class AnalysisBar(QWidget):
         self._alt = check.alternative
         if check.alternative:
             alt = M.BY_KEY[check.alternative]
-            self.alt_btn.setText(f"{alt.label}(으)로 바꾸기")
+            self.alt_btn.setText(f"{josa(alt.label, '으로/로')} 바꾸기")
             self.alt_btn.show()
         else:
             self.alt_btn.hide()

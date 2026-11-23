@@ -4,7 +4,7 @@
 
 ![메인 분석 화면](docs/images/main_light.png)
 
-## 프로그램 실행 (v0.5.0)
+## 프로그램 실행 (v0.5.1)
 
 ```bash
 pip install -e ".[gui]"     # 엔진 + 화면(PySide6)
