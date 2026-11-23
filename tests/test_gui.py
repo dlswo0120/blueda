@@ -69,7 +69,8 @@ def test_load_and_describe_shows_both_results(qtbot, win):
     assert names == ["기술통계 - 수치형", "기술통계 - 범주형"]
     # 두 결과가 모두 지표 탭에 나와야 함 (예전엔 마지막 하나만 보임)
     page = win.main.tabs.metric_scroll.widget()
-    texts = " ".join(lbl.text() for lbl in page.findChildren(W.QLabel))
+    from PySide6.QtWidgets import QLabel
+    texts = " ".join(lbl.text() for lbl in page.findChildren(QLabel))
     assert "수치형 요약" in texts and "범주형 요약" in texts
 
 
