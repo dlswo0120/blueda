@@ -22,6 +22,7 @@ class MultiColumnButton(QPushButton):
     changedColumns = Signal(list)
 
     def __init__(self):
+        """여러 열을 고르는 버튼 (다중회귀 독립변수 등). columns는 고른 열, options는 고를 수 있는 열."""
         super().__init__("고르기  ▾")
         self.setProperty("kind", "chip")
         self.columns = []
@@ -29,19 +30,23 @@ class MultiColumnButton(QPushButton):
         self.clicked.connect(self._open)
 
     def set_options(self, options):
+        """고를 수 있는 열을 바꿉니다. 이미 고른 열 중 목록에 없는 것은 뺍니다."""
         self.options = list(options)
         self.columns = [c for c in self.columns if c in self.options]
         self._label()
 
     def set_columns(self, cols):
+        """고른 열을 직접 정합니다 (히스토리 복원용). 목록에 없는 열은 무시합니다."""
         self.columns = [c for c in cols if c in self.options]
         self._label()
 
     def _label(self):
+        """버튼 글자를 '고르기' / 'A, B' / 'A 외 N'으로 바꿉니다."""
         n = len(self.columns)
         self.setText(("고르기" if n == 0 else ", ".join(map(str, self.columns)) if n <= 2 else f"{self.columns[0]} 외 {n - 1}") + "  ▾")
 
     def _open(self):
+        """열 목록 팝업(ValuePopup)을 열고, 적용하면 changedColumns 신호를 보냅니다."""
         pop = ValuePopup(pd.Series(self.options, dtype=object), self.columns, parent=self)
         for i in range(pop.list.count()):              # 열 목록이라 행 수 표시는 빼기
             it = pop.list.item(i)
@@ -49,6 +54,7 @@ class MultiColumnButton(QPushButton):
         pop.search.setPlaceholderText(f"열 검색 ({len(self.options)}개)")
 
         def done(cols):
+            """팝업에서 적용한 열을 저장하고 알립니다."""
             self.columns = cols
             self._label()
             self.changedColumns.emit(cols)
@@ -57,14 +63,23 @@ class MultiColumnButton(QPushButton):
 
 
 class AnalysisBar(QWidget):
+    """분석 설정 줄: 고른 분석의 이름·설명, 입력칸들, 실행 전 점검 문구, 대안 버튼, 실행 버튼.
+
+    주요 속성
+    - method: 지금 분석(methods.Method)
+    - widgets: {칸 이름: (Param, 입력 위젯, 칸 상자)}. 칸 상자는 차트 종류 등에 따라 숨김/보임
+    - kinds: 열마다 변수 종류 (칸에 맞는 열만 목록에 넣고, 날짜 단위 칸 표시 여부를 정할 때 사용)
+    신호: runRequested(분석 키, 값) / switchRequested(대안 분석 키) / paramsChanged(입력이 바뀐 뒤 200ms)
+    """
     runRequested = Signal(str, dict)
     switchRequested = Signal(str)
     paramsChanged = Signal()
 
     def __init__(self):
+        """빈 설정 줄을 만듭니다. 입력이 바뀔 때마다 점검하지 않고 200ms 기다렸다 한 번만 점검합니다(_timer)."""
         super().__init__()
-        self.method = None
-        self.widgets = {}
+        self.method = None  # 지금 분석(methods.Method)
+        self.widgets = {}  # {칸 이름: (Param, 입력 위젯, 칸 상자)}
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(10)
@@ -77,7 +92,7 @@ class AnalysisBar(QWidget):
         head.addWidget(self.title)
         head.addWidget(self.desc)
         top.addLayout(head, 1)
-        self.fields = QHBoxLayout()
+        self.fields = QHBoxLayout()  # 입력칸 상자들이 가로로 놓이는 자리
         self.fields.setSpacing(12)
         top.addLayout(self.fields)
         self.run_btn = button("실행", "primary")
@@ -102,6 +117,11 @@ class AnalysisBar(QWidget):
         self._timer.timeout.connect(self.paramsChanged)
 
     def set_method(self, method, kinds, df):
+        """분석을 바꾸면 이전 입력칸을 지우고 새 분석의 입력칸을 만듭니다.
+
+        칸 종류(Param.kind)에 따라: 열 고르기 → 콤보(맞는 종류의 열만), 선택지 → 콤보, 여러 열 → MultiColumnButton,
+        값 → 콤보(열의 값 목록), 숫자 → 입력칸(검사기 포함). 이전 칸은 숨기고 부모에서 떼어 낸 뒤 지웁니다(잔상 방지).
+        """
         self.method = method
         self.title.setText(method.label)
         self.desc.setText(method.desc)
@@ -176,6 +196,7 @@ class AnalysisBar(QWidget):
             box.setVisible(M.visible(p, raw, getattr(self, "kinds", {}), self.method))
 
     def _fill_values(self, df):
+        """비율 신뢰구간의 '범주 값' 칸을 고른 열의 값(많은 순)으로 채웁니다."""
         _, cw, _ = self.widgets["column"]
         _, vw, _ = self.widgets["category"]
         vw.clear()
@@ -203,6 +224,7 @@ class AnalysisBar(QWidget):
         self._changed()
 
     def _raw_params(self):
+        """모든 칸(숨은 칸 포함)의 현재 값을 {칸 이름: 값}으로 돌려줍니다."""
         out = {}
         for name, (p, w, _) in self.widgets.items():
             if isinstance(w, MultiColumnButton):
@@ -220,6 +242,7 @@ class AnalysisBar(QWidget):
                 if M.visible(p, raw, getattr(self, "kinds", {}), self.method)}
 
     def needed_columns(self):
+        """고른 열 목록(중복 없이). 분석 범위를 이 열들로 좁혀 계산을 가볍게 합니다."""
         cols = []
         for name, v in self.params().items():
             p = self.widgets[name][0]
@@ -230,11 +253,16 @@ class AnalysisBar(QWidget):
         return list(dict.fromkeys(cols))
 
     def _changed(self, *_):
+        """입력이 바뀌면 칸 보임/숨김을 다시 정하고 200ms 뒤 점검하도록 타이머를 다시 겁니다."""
         if self.widgets:
             self._update_visibility()
         self._timer.start()
 
     def set_check(self, check, running=False):
+        """실행 전 점검 결과를 보여줍니다. 실패면 실행 버튼을 끄고 이유를, 대안이 있으면 '…으로 바꾸기' 버튼을 보입니다.
+
+        running=True(분석 중)면 점검이 통과해도 실행 버튼을 끕니다.
+        """
         self.run_btn.setEnabled(bool(check.ok) and not running)
         self.warn.setText(check.message)
         self.warn.setVisible(bool(check.message))
@@ -247,5 +275,6 @@ class AnalysisBar(QWidget):
             self.alt_btn.hide()
 
     def _run(self):
+        """실행 버튼: 보이는 칸의 값으로 runRequested 신호를 보냅니다."""
         if self.method:
             self.runRequested.emit(self.method.key, self.params())

@@ -27,9 +27,14 @@ def format_value(v):
 
 
 class DataFrameModel(QAbstractTableModel):
+    """데이터 탭 표 모델. 아주 큰 데이터도 화면이 멈추지 않도록 CHUNK(1,000)행씩 나눠 보여줍니다.
+
+    스크롤이 끝에 가까워지면 Qt가 canFetchMore/fetchMore를 불러 다음 묶음을 붙입니다.
+    """
     loadedChanged = Signal(int, int)   # (불러온 행 수, 전체 행 수)
 
     def __init__(self, df=None, chunk=CHUNK, show_index=False, parent=None):
+        """show_index: 왼쪽에 원래 행 번호를 보일지"""
         super().__init__(parent)
         self._chunk = chunk
         self._show_index = show_index
@@ -40,6 +45,7 @@ class DataFrameModel(QAbstractTableModel):
 
     # ---- 데이터 교체 ----
     def set_dataframe(self, df):
+        """보여줄 데이터를 바꾸고 처음 CHUNK행만 올립니다. 정렬 계산 캐시도 새로 만듭니다."""
         self.beginResetModel()
         self._df = df if df is not None else pd.DataFrame()
         self._loaded = min(self._chunk, len(self._df))
@@ -55,16 +61,20 @@ class DataFrameModel(QAbstractTableModel):
                        for t in self._df.dtypes]
 
     def dataframe(self):
+        """지금 보여주는 데이터(DataFrame)를 돌려줍니다."""
         return self._df
 
     # ---- Qt 모델 기본 ----
     def rowCount(self, parent=QModelIndex()):
+        """지금까지 불러온 행 수 (전체 행 수가 아님)."""
         return 0 if parent.isValid() else self._loaded
 
     def columnCount(self, parent=QModelIndex()):
+        """열 수."""
         return 0 if parent.isValid() else self._df.shape[1]
 
     def data(self, index, role=Qt.DisplayRole):
+        """칸 하나의 표시 글자·정렬을 돌려줍니다. 숫자는 오른쪽 정렬, 결측은 빈칸."""
         if not index.isValid():
             return None
         if role == Qt.DisplayRole:
@@ -74,6 +84,7 @@ class DataFrameModel(QAbstractTableModel):
         return None
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
+        """열 이름(가로)과 행 번호(세로) 머리글."""
         if role != Qt.DisplayRole:
             return None
         if orientation == Qt.Horizontal:
@@ -84,9 +95,11 @@ class DataFrameModel(QAbstractTableModel):
 
     # ---- 나눠 불러오기 ----
     def canFetchMore(self, parent=QModelIndex()):
+        """아직 안 불러온 행이 남았는지."""
         return not parent.isValid() and self._loaded < len(self._df)
 
     def fetchMore(self, parent=QModelIndex()):
+        """다음 CHUNK행을 붙입니다."""
         if parent.isValid():
             return
         add = min(self._chunk, len(self._df) - self._loaded)
@@ -99,6 +112,7 @@ class DataFrameModel(QAbstractTableModel):
 
     # ---- 열 이름 눌러 정렬 ----
     def sort(self, column, order=Qt.AscendingOrder):
+        """열 머리글을 누르면 그 열로 정렬합니다 (mergesort: 같은 값의 원래 순서 유지)."""
         if self._df.empty:
             return
         col = self._df.columns[column]

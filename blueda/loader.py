@@ -26,6 +26,7 @@ MAGIC = {
 
 @dataclass
 class FileInfo:
+    """파일 판별 결과: 경로, 형식(csv/excel/word/pdf…), 크기, CSV 인코딩·구분자, Excel 시트, 지원 여부, 상세 문구."""
     path: str
     file_type: str                 # csv / excel / word / pdf / xls / unknown
     size_bytes: int = 0
@@ -36,6 +37,7 @@ class FileInfo:
     detail: str = ""
 
     def summary(self):
+        """판별 결과를 한 줄 문장으로."""
         size_kb = self.size_bytes / 1024
         extra = []
         if self.encoding:
@@ -49,6 +51,7 @@ class FileInfo:
 
 
 def _read_magic(path, n=8):
+    """파일 앞 n바이트(매직 바이트). 확장자가 틀려도 실제 형식을 알아내는 데 씁니다 (zip=xlsx/docx, %PDF 등)."""
     with open(path, "rb") as f:
         return f.read(n)
 
@@ -162,6 +165,7 @@ def total_memory():
             import ctypes
 
             class _MS(ctypes.Structure):
+                """Windows API GlobalMemoryStatusEx가 채우는 메모리 정보 구조체 (전체 메모리 크기를 읽는 데 씀)."""
                 _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
                             ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
                             ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),

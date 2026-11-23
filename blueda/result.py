@@ -24,6 +24,7 @@ class ChartImage:
     DPI = 120
 
     def __init__(self, fig):
+        """그림을 DPI 해상도의 PNG로 바꾸고, 크기(픽셀)를 기억한 뒤 그림 객체를 닫습니다."""
         import io
         import matplotlib.pyplot as plt
         buf = io.BytesIO()
@@ -42,6 +43,7 @@ class ChartImage:
             f.write(self.png)
 
     def __len__(self):
+        """PNG 크기(바이트)."""
         return len(self.png)
 
 
@@ -62,6 +64,11 @@ def constant_message(column):
 
 @dataclass
 class AnalysisResult:
+    """분석 결과 하나.
+
+    name 분석 이름, status SUCCESS/FAIL/UNSUPPORTED, message 결과 세션 한 줄 요약,
+    metrics 핵심 숫자(지표), tables 결과 표들, figures 차트들(세션에 쌓일 때 PNG로), notes 안내 문구, code 실행 코드
+    """
     name: str                                     # 분석 이름 (예: "기술통계 - 수치형")
     status: str = SUCCESS
     message: str = ""                             # 결과 세션 창에 보여줄 한 줄 요약
@@ -74,6 +81,7 @@ class AnalysisResult:
 
     @property
     def ok(self):
+        """SUCCESS면 True."""
         return self.status == SUCCESS
 
     def session_line(self):
@@ -81,6 +89,7 @@ class AnalysisResult:
         return f"[{self.created_at}] [{self.status}] {self.name}: {self.message}"
 
     def __repr__(self):
+        """파이썬에서 출력하면 요약(이름·상태·문장·표·차트 이름)을 보여줍니다."""
         parts = [self.session_line()]
         for k, v in self.metrics.items():
             parts.append(f"  - {k}: {v}")

@@ -37,6 +37,7 @@ class Filter:
     k: float = 1.5
 
     def label(self):
+        """칩에 보일 글자 (예: 'Region: West, East', '나이: 20 ~ 39')."""
         if self.op == IN:
             v = [str(x) for x in self.values]
             shown = ", ".join(v) if len(v) <= 2 else f"{v[0]} 외 {len(v) - 1}"
@@ -84,6 +85,10 @@ class Filter:
 
 @dataclass
 class AnalysisScope:
+    """분석 범위: 쓸 열(columns), 필터 칩(filters), 직접 입력 조건(query), 행 구간, 결측 제외.
+
+    원본을 복사하지 않고 조건에 맞는 행만 꺼내서(apply) 큰 데이터에서도 메모리를 아낍니다.
+    """
     columns: list = field(default_factory=list)   # 분석할 열 (비우면 전체)
     filters: list = field(default_factory=list)   # 필터 칩 조건 (모두 만족하는 행만)
     query: str = ""                               # 고급: pandas query 문법
@@ -92,6 +97,7 @@ class AnalysisScope:
     dropna: bool = False                          # 선택한 열에 결측이 있는 행 제외 여부
 
     def describe(self):
+        """범위를 한 줄 문장으로 (결과 세션 RUN 줄에 표시)."""
         parts = [f"열 {len(self.columns)}개" if self.columns else "전체 열"]
         parts += [f.label() for f in self.filters]
         if self.query:

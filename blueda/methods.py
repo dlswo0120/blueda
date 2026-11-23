@@ -23,6 +23,11 @@ COLUMN_KINDS = (COL_NUM, COL_CAT, COL_ANY, COL_GROUP, COL_XY)   # 열 하나를 
 
 @dataclass
 class Param:
+    """분석 입력칸 하나의 정의.
+
+    name 메서드 인자 이름, label 화면 이름, kind 칸 종류(COL_NUM 등), default 기본값,
+    optional 비워도 되는지, choices 선택지, show_if 다른 칸 값에 따라 보이기, date_only 날짜 열을 골랐을 때만 보이기
+    """
     name: str          # 메서드 인자 이름
     label: str         # 화면 표시 이름
     kind: str          # 위 칸 종류
@@ -35,6 +40,7 @@ class Param:
 
 @dataclass
 class Method:
+    """분석 하나의 정의: key(고유 이름), group(메뉴 그룹), label·desc(화면 이름·한 줄 설명), params(입력칸), question(질문별 보기 문장), available(지원 여부)."""
     key: str
     group: str
     label: str
@@ -139,6 +145,7 @@ def visible(param, params, kinds=None, method=None):
 
 
 def visible_basic(param, params):
+    """show_if 조건만 보고 칸을 보일지 (날짜 단위 칸 조건은 제외). 실행·점검에서 '쓰는 칸'을 고를 때 씁니다."""
     return not param.show_if or all(params.get(k) in v for k, v in param.show_if.items())
 
 
@@ -161,6 +168,7 @@ def columns_for(param_kind, kinds, selected=None):
 
 @dataclass
 class Check:
+    """실행 전 점검 결과: ok(실행 가능), message(안내 문장, 경고가 없으면 빈 문자열), alternative(대안 분석 키)."""
     ok: bool
     message: str = ""
     alternative: str = ""   # 대안 분석 key (예: t검정 → 분산분석)
@@ -247,6 +255,7 @@ def precheck(key, params, df, kinds):
 def _precheck_tables(key, p, df, kinds):
     """표·차트 만들기 실행 전 점검."""
     def n(c):
+        """열의 값 종류 수 (줄여 쓰기용)."""
         return df[c].nunique()
 
     if key == "pivot_table":

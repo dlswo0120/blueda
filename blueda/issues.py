@@ -14,6 +14,7 @@ NEED, REVIEW = "확인 필요", "확인 권장"
 
 @dataclass
 class Issue:
+    """이슈 한 줄. level(확인 필요/확인 권장), item(점검 항목), text(문장), action(바로 가기: dates/check)."""
     level: str        # 확인 필요 / 확인 권장
     item: str         # 점검 항목 (예: "1. 타입")
     text: str         # 이슈 문장

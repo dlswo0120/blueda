@@ -35,10 +35,15 @@ def column_detail(s, kind):
 
 
 class ColumnPanel(QWidget):
+    """왼쪽 열 상자: 열 체크 목록(종류별 묶음), 검색, 전체/해제, 오른쪽 클릭으로 변수 종류 바꾸기.
+
+    체크한 열이 분석 범위가 됩니다. 신호: selectionChanged(고른 열) / typeChangeRequested(열, 새 종류)
+    """
     selectionChanged = Signal(list)
     typeChangeRequested = Signal(str, str)
 
     def __init__(self):
+        """목록 상자는 높이를 고정해 상자 안에서만 스크롤됩니다 (열이 수백 개여도 화면이 밀리지 않게)."""
         super().__init__()
         box = QVBoxLayout(self)
         box.setContentsMargins(0, 0, 0, 0)
@@ -77,6 +82,7 @@ class ColumnPanel(QWidget):
         self._total = 0
 
     def set_columns(self, df, kinds, selected=()):
+        """열 목록을 종류별(수치형·범주형·날짜·ID·텍스트)로 묶어 채웁니다. selected에 있는 열만 체크합니다."""
         self._updating = True
         self.tree.clear()
         self._total = len(df.columns)
@@ -103,6 +109,7 @@ class ColumnPanel(QWidget):
         self._emit()
 
     def selected(self):
+        """체크된 열 목록."""
         out = []
         for i in range(self.tree.topLevelItemCount()):
             it = self.tree.topLevelItem(i)
@@ -124,6 +131,7 @@ class ColumnPanel(QWidget):
         self._emit()
 
     def _set_all(self, on):
+        """보이는(검색에 걸린) 열을 모두 체크하거나 해제합니다. 바꾸는 동안 신호를 막았다가 마지막에 한 번만 보냅니다."""
         self._updating = True
         for i in range(self.tree.topLevelItemCount()):
             it = self.tree.topLevelItem(i)
@@ -133,6 +141,7 @@ class ColumnPanel(QWidget):
         self._emit()
 
     def _filter(self, text):
+        """검색어가 이름에 들어간 열만 보이게 하고, 항목이 없는 묶음 제목은 숨깁니다."""
         q = text.strip().lower()
         head = None
         visible_in_group = 0
@@ -151,15 +160,18 @@ class ColumnPanel(QWidget):
             head.setHidden(visible_in_group == 0)
 
     def _on_item_changed(self, *_):
+        """체크가 바뀌면 고른 열 수를 갱신하고 알립니다 (_updating 중이면 무시)."""
         if not self._updating:
             self._emit()
 
     def _emit(self):
+        """고른 열 수 표시를 바꾸고 selectionChanged 신호를 보냅니다."""
         sel = self.selected()
         self.count_label.setText(f"열 {len(sel)} / {self._total}")
         self.selectionChanged.emit(sel)
 
     def _context_menu(self, pos):
+        """열을 오른쪽 클릭하면 '종류 바꾸기' 메뉴를 띄웁니다."""
         it = self.tree.itemAt(pos)
         c = it.data(0, Qt.UserRole) if it else None
         if c is None:

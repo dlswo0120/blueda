@@ -17,12 +17,17 @@ from .result import constant_message, FAIL, SUCCESS, AnalysisResult
 
 
 def _check_cols(df, *cols):
+    """열 이름이 데이터에 모두 있는지 확인합니다. 없으면 KeyError(어떤 열이 없는지 포함)를 냅니다."""
     missing = [c for c in cols if c not in df.columns]
     if missing:
         raise KeyError(f"데이터에 없는 열: {missing}")
 
 
 def _group_boxplot(df, group_col, value_col, title):
+    """그룹별 상자그림 + 그룹 평균(◆)과 95% 신뢰구간 막대. t검정·분산분석 결과 차트에 씁니다.
+
+    큰 데이터는 표본으로 그리고, 꼬리가 긴 분포면 charts.fit_box_axis가 축을 맞춥니다.
+    """
     df = charts.sample(df)  # 큰 데이터는 표본으로 그림
     fig, ax = charts.new_figure()
     names = sorted(df[group_col].dropna().unique().tolist(), key=str)
@@ -112,6 +117,11 @@ print(lev_p, t, p, d)'''
 
 
 def anova(df, group_col, value_col, alpha=0.05, posthoc=True):
+    """일원분산분석(ANOVA). 그룹이 2개 이상일 때 평균 차이를 검정하고 효과 크기 η²와 Tukey 사후검정을 붙입니다.
+
+    인자: group_col 그룹 열(범주형), value_col 값 열(수치형), alpha 유의수준, posthoc 사후검정 여부
+    반환: AnalysisResult (지표: F, p, η² / 표: 분산분석표·그룹별 요약·사후검정 / 차트: 그룹별 상자그림)
+    """
     from statsmodels.formula.api import ols
     from statsmodels.stats.anova import anova_lm
     from statsmodels.stats.multicomp import pairwise_tukeyhsd
@@ -177,6 +187,11 @@ print(table, eta2, tukey)'''
 
 # ---------------- 범주형 × 범주형 ----------------
 def chi_square(df, row_col, col_col, alpha=0.05):
+    """카이제곱 독립성 검정. 두 범주형 변수가 서로 관련 있는지 봅니다.
+
+    2×2 표는 Yates 연속성 보정을 적용합니다. 기대빈도가 5 미만인 칸이 20%를 넘으면 안내하고,
+    그때 2×2 표면 Fisher 정확검정 p값도 함께 계산합니다. 효과 크기는 Cramér's V입니다.
+    """
     code = f'''# [목적] 두 범주형 변수({row_col}, {col_col})가 서로 관련이 있는지 검정
 # 귀무가설 H0: 두 변수는 독립이다(관련 없음) / 대립가설 H1: 관련이 있다
 table = pd.crosstab(sub[{row_col!r}], sub[{col_col!r}])    # 교차표 (관측빈도)
@@ -225,6 +240,10 @@ print(table, chi2, p, dof, low, v)'''
 
 # ---------------- 수치형 × 수치형 ----------------
 def correlation_test(df, x, y, alpha=0.05):
+    """두 수치형 변수의 상관 검정. Pearson(직선 관계)과 Spearman(순위 관계)을 함께 계산합니다.
+
+    값이 3개 미만이거나 한쪽 값이 모두 같으면 계산하지 않고 FAIL로 안내합니다.
+    """
     code = f'''# [목적] 두 수치형 변수({x}, {y})의 상관계수와 유의성
 # 귀무가설 H0: 상관계수 = 0 / 대립가설 H1: 상관계수 ≠ 0
 d = sub[[{x!r}, {y!r}]].dropna()
@@ -259,6 +278,10 @@ print(r, p, rho, p_s)'''
 
 
 def simple_regression(df, x, y, alpha=0.05):
+    """단순회귀 y = b0 + b1·x (최소제곱법, statsmodels OLS).
+
+    반환 차트: 산점도와 회귀선(95% 신뢰대), 잔차 vs 예측값(가정 점검용).
+    """
     import statsmodels.api as sm
     code = f'''# [목적] 단순회귀: {x}(으)로 {josa(y, '을/를')} 설명하는 직선 y = b0 + b1·x 찾기 (최소제곱법)
 import statsmodels.api as sm
@@ -303,6 +326,7 @@ print(model.summary())                                    # 계수, 표준오차
 
 
 def _residual_plot(model):
+    """잔차 vs 예측값 그림. 점들이 0 주변에 고르게 퍼져 있어야 회귀 가정(등분산·선형)이 맞습니다."""
     fig, ax = charts.new_figure()
     idx = charts.sample(model.fittedvalues).index  # 큰 데이터는 표본 점만
     ax.scatter(model.fittedvalues.loc[idx], model.resid.loc[idx], color=charts.PRIMARY, alpha=0.7)

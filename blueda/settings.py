@@ -24,6 +24,7 @@ EDITABLE = [
 
 
 def settings_path():
+    """설정 파일 위치: Windows는 %APPDATA%\\BLUEDA\\settings.json, 그 외는 ~/.config/blueda/settings.json. 히스토리도 같은 폴더."""
     base = os.environ.get("APPDATA") if os.name == "nt" else None
     base = base or os.path.join(os.path.expanduser("~"), ".config")
     folder = os.path.join(base, "BLUEDA" if os.name == "nt" else "blueda")
@@ -51,6 +52,7 @@ def load_settings(path=None):
 
 
 def save_settings(cfg, ui, path=None):
+    """설정(cfg)과 화면 설정(ui: 테마·최근 파일·히스토리)을 JSON으로 저장하고 경로를 돌려줍니다."""
     path = path or settings_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:

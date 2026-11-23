@@ -31,11 +31,13 @@ MONO_FAMILIES = ["JetBrains Mono", "Consolas", "D2Coding", "Noto Sans Mono CJK K
 
 
 def _asset(name):
+    """assets 폴더 파일의 경로를 돌려줍니다 (Qt 스타일시트용으로 / 구분자)."""
     import os
     return os.path.join(os.path.dirname(__file__), "assets", name).replace("\\", "/")
 
 
 def stylesheet(dark=False):
+    """전체 Qt 스타일시트 문자열. dark=True면 바깥 배경만 어두운 회색, 패널 안 색은 라이트와 같게 둡니다."""
     bg = DARK_BG if dark else LIGHT_BG
     chevron = _asset("chevron.svg")
     return f"""

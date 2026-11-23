@@ -13,6 +13,10 @@ AVAILABLE_STAT_CHECKS = ("normality", "equal_variance", "correlation")
 @dataclass
 class BluedaConfig:
     # ---------- 선택 기능 ----------
+    """분석 설정값 묶음. 설정 창에서 바꾸는 값(유의수준, IQR 배수 등)이 여기에 있고 PC에 저장됩니다.
+
+    개발자가 코드에서만 조정하는 판단 기준은 limits.py에 있습니다.
+    """
     check_source_license: bool = True          # E: 데이터 출처·이용조건 확인
     stat_checks: list = field(default_factory=list)  # F: 실행할 통계 검사 (빈 리스트면 실행 안 함)
     link_lecture_concepts: bool = True         # G: 강의 개념 연결 표시 (부캠 기간 True, 출시 시 False)
@@ -33,6 +37,7 @@ class BluedaConfig:
 
     def __post_init__(self):
         # [목적] 잘못된 검사 이름이 들어오면 바로 알려주기
+        """잘못된 설정(없는 통계 점검 이름 등)을 만들 때 바로 알려줍니다."""
         unknown = [c for c in self.stat_checks if c not in AVAILABLE_STAT_CHECKS]
         if unknown:
             raise ValueError(

@@ -18,9 +18,11 @@ from .columns import KIND_ORDER, KIND_TITLE
 # 가운데 위: 필터 칩 (행 조건)
 # ======================================================================
 class ColumnPickerPopup(Popup):
+    """'+ 조건'을 누르면 뜨는 열 고르기 창 (검색, 종류별). 열을 누르면 picked 신호로 보냅니다."""
     picked = Signal(str)
 
     def __init__(self, df, kinds, parent=None):
+        """열마다 종류와 짧은 정보(범위·값 개수)를 보여줍니다."""
         super().__init__(260, parent)
         self.search = QLineEdit()
         self.search.setPlaceholderText(f"열 검색 ({len(df.columns)}개)")
@@ -44,6 +46,7 @@ class ColumnPickerPopup(Popup):
         self.list.itemClicked.connect(self._click)
 
     def _filter(self, t):
+        """검색어로 열을 거릅니다."""
         q = t.strip().lower()
         for i in range(self.list.count()):
             it = self.list.item(i)
@@ -52,6 +55,7 @@ class ColumnPickerPopup(Popup):
                 it.setHidden(bool(q) and q not in str(c).lower())
 
     def _click(self, it):
+        """고른 열을 보내고 창을 닫습니다."""
         c = it.data(Qt.UserRole)
         if c is not None:
             self.close()
@@ -64,6 +68,10 @@ class ValuePopup(Popup):
     MAX_LIST = 5000
 
     def __init__(self, series, chosen=(), max_direct=20, parent=None):
+        """범주형 값 고르기 창: 값마다 행 수, 검색, 해제·적용.
+
+        값 종류가 max_direct 이하면 바로 목록, 넘으면 검색을 먼저 권합니다. 목록은 MAX_LIST개까지만 그립니다(속도).
+        """
         super().__init__(280, parent)
         counts = series.value_counts(dropna=True)
         self._total_values = len(counts)
@@ -103,23 +111,28 @@ class ValuePopup(Popup):
         self._update_count()
 
     def _filter(self, t):
+        """검색어가 들어간 값만 보이게 합니다."""
         q = t.strip().lower()
         for i in range(self.list.count()):
             it = self.list.item(i)
             it.setHidden(bool(q) and q not in str(it.data(Qt.UserRole)).lower())
 
     def _checked(self):
+        """체크된 값 목록."""
         return [self.list.item(i).data(Qt.UserRole) for i in range(self.list.count())
                 if self.list.item(i).checkState() == Qt.Checked]
 
     def _update_count(self, *_):
+        """'N개 선택' 표시를 갱신합니다."""
         self.count.setText(f"{len(self._checked())}개 선택")
 
     def _clear(self):
+        """모두 해제합니다."""
         for i in range(self.list.count()):
             self.list.item(i).setCheckState(Qt.Unchecked)
 
     def _apply(self):
+        """체크한 값을 applied 신호로 보내고 닫습니다."""
         self.close()
         self.applied.emit(self._checked())
 
@@ -129,6 +142,7 @@ class RangePopup(Popup):
     applied = Signal(object, object)
 
     def __init__(self, series, kind, lo=None, hi=None, parent=None):
+        """수치형·날짜 열의 최소~최대 범위 창. kind가 '날짜'면 날짜 글자(예: 2025-01-01)로 받습니다."""
         super().__init__(260, parent)
         self.kind = kind
         row = QHBoxLayout()
@@ -166,6 +180,7 @@ class RangePopup(Popup):
         ok.clicked.connect(self._apply)
 
     def _value(self, text):
+        """입력 글자를 숫자나 날짜로 바꿉니다. 비어 있으면 None(그쪽은 제한 없음)."""
         t = text.strip().replace(",", "")
         if not t:
             return None
@@ -175,6 +190,7 @@ class RangePopup(Popup):
         return t
 
     def _apply(self):
+        """최소 > 최대 같은 잘못된 범위면 안내하고, 맞으면 applied 신호로 보냅니다."""
         try:
             lo, hi = self._value(self.lo.text()), self._value(self.hi.text())
         except (ValueError, TypeError):
@@ -195,10 +211,12 @@ class RangePopup(Popup):
 
 
 class Chip(QFrame):
+    """필터 칩 하나: 조건 글자(누르면 편집) + × 버튼(지우기)."""
     clicked = Signal()
     removed = Signal()
 
     def __init__(self, text):
+        """신호: clicked(편집) / removed(지우기)."""
         super().__init__()
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -213,6 +231,7 @@ class Chip(QFrame):
         self.x.clicked.connect(self.removed)
 
     def set_text(self, text):
+        """칩 글자를 바꿉니다."""
         self.btn.setText(text + "  ▾")
 
 
@@ -221,11 +240,16 @@ class FilterBar(QWidget):
     changed = Signal()
 
     def __init__(self):
+        """행 조건 줄: 필터 칩들, '+ 조건', '결측 제외', '이상값 후보 제외', 남는 행 수, 직접 입력(고급).
+
+        주요 속성: filters(scope.Filter 목록), query(직접 입력 조건), df·kinds(값 목록·범위를 만들 데이터)
+        신호: changed (조건이 바뀌면, MainWindow가 행 수를 다시 세고 히스토리에 기록)
+        """
         super().__init__()
-        self.filters = []
-        self.query = ""
-        self.df = None
-        self.kinds = {}
+        self.filters = []  # 걸어 둔 조건들 (scope.Filter 목록, 칩 순서와 같음)
+        self.query = ""  # 직접 입력 조건 (pandas query 문법, 고급)
+        self.df = None  # 값 목록·범위를 만들 원본 데이터
+        self.kinds = {}  # {열: 변수 종류} → 값 창(범주형)인지 범위 창(수치형·날짜)인지 결정
         self.max_direct = 20
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -266,10 +290,12 @@ class FilterBar(QWidget):
         self._rebuild()
 
     def set_row_count(self, n, total):
+        """'→ N행 / 전체' 표시를 갱신합니다."""
         self.rows.setText(f"→ <b>{n:,}</b>행" + ("" if n == total else f" <span style='color:{theme.SUB}'>/ {total:,}</span>"))
 
     # ---- 칩 다시 그리기 ----
     def _rebuild(self):
+        """칩과 버튼을 다시 그립니다. 지운 위젯은 숨기고 부모에서 떼어 낸 뒤 지웁니다 (deleteLater만 하면 잔상이 남음)."""
         while self.flow.count():
             w = self.flow.takeAt(0).widget()
             if w:
@@ -296,6 +322,7 @@ class FilterBar(QWidget):
         self.flow_host.updateGeometry()
 
     def _changed(self):
+        """칩을 다시 그리고 changed 신호를 보냅니다."""
         self._rebuild()
         self.changed.emit()
 
@@ -308,16 +335,19 @@ class FilterBar(QWidget):
         self._changed()
 
     def _remove(self, i):
+        """i번째 조건을 지웁니다."""
         self.filters.pop(i)
         self._changed()
 
     # ---- 조건 추가 ----
     def _add(self):
+        """'+ 조건': 열 고르기 창 → 고른 열의 값/범위 창으로 이어집니다."""
         pop = ColumnPickerPopup(self.df, self.kinds, self)
         pop.picked.connect(lambda c: self._open_editor(c, None, self.add_btn))
         pop.show_below(self.add_btn)
 
     def _open_editor(self, column, index, anchor):
+        """열 종류에 따라 값 창(범주형) 또는 범위 창(수치형·날짜)을 엽니다. index가 None이면 새 조건."""
         from ...scope import Filter
         kind = self.kinds.get(column)
         current = self.filters[index] if index is not None else None
@@ -325,6 +355,7 @@ class FilterBar(QWidget):
             pop = RangePopup(self.df[column], kind, current.lo if current else None, current.hi if current else None, self)
 
             def done(lo, hi):
+                """범위 창에서 적용: 양쪽 다 비면 무시, 아니면 between 조건으로 넣음."""
                 if lo is None and hi is None:
                     return
                 f = Filter(column, "between", lo=lo, hi=hi)
@@ -334,6 +365,7 @@ class FilterBar(QWidget):
             pop = ValuePopup(self.df[column], current.values if current else (), self.max_direct, self)
 
             def done(values):
+                """값 창에서 적용: 아무것도 안 고르면 기존 조건을 지우고, 고르면 in 조건으로 넣음."""
                 if not values:
                     if index is not None:
                         self._remove(index)
@@ -343,6 +375,7 @@ class FilterBar(QWidget):
         pop.show_below(anchor)
 
     def _put(self, index, f):
+        """조건을 새로 넣거나(index None) index 자리의 조건을 바꿉니다."""
         if index is None:
             self.filters.append(f)
         else:
@@ -350,11 +383,13 @@ class FilterBar(QWidget):
         self._changed()
 
     def _edit(self, i, anchor):
+        """칩을 누르면 그 조건을 편집합니다."""
         f = self.filters[i]
         if f.op in ("between", "in"):
             self._open_editor(f.column, i, anchor)
 
     def _add_notna(self):
+        """'결측 제외': 고른 열에 결측이 있는 행을 뺍니다."""
         from ...scope import Filter
         if any(f.op == "notna" for f in self.filters):
             return
@@ -362,6 +397,7 @@ class FilterBar(QWidget):
         self._changed()
 
     def _add_iqr(self):
+        """'이상값 후보 제외': 수치형 열을 고르게 한 뒤 IQR 경계 밖 행을 뺍니다."""
         nums = [c for c, k in self.kinds.items() if k == "수치형"]
         if not nums:
             return
@@ -372,10 +408,12 @@ class FilterBar(QWidget):
         menu.exec(self.iqr_btn.mapToGlobal(QPoint(0, self.iqr_btn.height())))
 
     def _put_iqr(self, c):
+        """고른 열로 이상값 후보 제외 조건을 추가합니다."""
         from ...scope import Filter
         self.filters.append(Filter(c, "iqr_inside"))
         self._changed()
 
     def _apply_query(self):
+        """직접 입력 조건(pandas query 문법)을 적용합니다. 문법 오류는 MainWindow가 FAIL로 알려줍니다."""
         self.query = self.direct.text().strip()
         self.changed.emit()

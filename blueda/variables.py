@@ -68,6 +68,7 @@ def infer_kind(s, max_categories=10, text_unique_ratio=0.5):
 
 
 def variable_types(df, overrides=None):
+    """열마다 변수 종류와 판단 이유를 표로 돌려줍니다. overrides(사용자 지정)가 자동 판단보다 우선합니다."""
     overrides = overrides or {}
     code = '''# [목적] 열마다 변수 종류 판정 (수치형=크기를 잰 값, 범주형=종류를 나타내는 값)
 for col in sub.columns:

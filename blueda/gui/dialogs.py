@@ -16,6 +16,10 @@ class SettingsDialog(QDialog):
     """오른쪽에 뜨는 설정 패널."""
 
     def __init__(self, cfg, ui, parent=None):
+        """설정 항목(settings.EDITABLE)마다 입력칸과 설명을 만들고, 화면 모드·로그 위치·히스토리 설정을 붙입니다.
+
+        숫자 칸은 QSpinBox 대신 QLineEdit을 씁니다 (QSpinBox에 테두리 스타일을 주면 글자가 사라지는 Qt 문제).
+        """
         super().__init__(parent)
         self.setWindowTitle("설정")
         self.setMinimumWidth(380)
@@ -88,6 +92,7 @@ class SettingsDialog(QDialog):
         lay.addWidget(btns)
 
     def _pick_dir(self):
+        """로그 저장 위치를 폴더 선택 창으로 고릅니다."""
         d = QFileDialog.getExistingDirectory(self, "로그 저장 위치", self.log_dir.text())
         if d:
             self.log_dir.setText(d)
@@ -108,6 +113,7 @@ class SettingsDialog(QDialog):
         return out, ""
 
     def accept(self):
+        """저장을 누르면 값을 검사하고, 잘못된 값이 있으면 창을 닫지 않고 이유를 보여줍니다."""
         vals, err = self.values()
         if vals is None:
             self.error.setText(err)
@@ -116,6 +122,7 @@ class SettingsDialog(QDialog):
         super().accept()
 
     def apply(self):
+        """검사를 통과한 값을 설정(cfg)과 화면 설정(ui)에 넣습니다. 파일 저장은 MainWindow가 합니다."""
         vals, _ = self.values()
         for key, v in (vals or {}).items():
             setattr(self.cfg, key, v)
@@ -130,6 +137,7 @@ class ColumnChooser(QDialog):
 
     def __init__(self, columns, parent=None, title="읽을 열 고르기",
                  message="분석에 필요한 열만 고르면 메모리를 아낄 수 있습니다.", ok_text=None, cancel_text=None):
+        """체크 목록 창. columns를 모두 체크한 상태로 보여주고, 버튼 글자(ok_text, cancel_text)를 바꿀 수 있습니다."""
         super().__init__(parent)
         self.setWindowTitle(title)
         lay = QVBoxLayout(self)
@@ -152,5 +160,6 @@ class ColumnChooser(QDialog):
         lay.addWidget(btns)
 
     def chosen(self):
+        """체크된 열 목록을 돌려줍니다."""
         return [self.list.item(i).data(Qt.UserRole) for i in range(self.list.count())
                 if self.list.item(i).checkState() == Qt.Checked]

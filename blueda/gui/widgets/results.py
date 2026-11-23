@@ -18,6 +18,7 @@ from .base import button, label
 # 가운데 아래: 결과 탭 (차트 / 지표 / 데이터 / 코드)
 # ======================================================================
 def table_view(df, show_index=True):
+    """DataFrame을 보여주는 표 위젯과 모델을 (view, model)로 돌려줍니다. 긴 문장이 있으면 줄바꿈합니다."""
     v = QTableView()
     model = DataFrameModel(df, show_index=show_index, parent=v)
     v.setModel(model)
@@ -73,7 +74,15 @@ def fit_table_height(view, max_rows=12):
 
 
 class ResultTabs(QTabWidget):
+    """결과 탭: 차트·지표·데이터·코드.
+
+    - 차트: 결과 문장, 핵심 숫자, 차트 이미지(ChartView), 안내 문구
+    - 지표: 결과 표들(표마다 복사·CSV 저장)
+    - 데이터: 지금 분석 범위의 데이터 (1,000행씩 이어서 불러옴)
+    - 코드: 실행한 pandas 코드 (Colab에 붙여 넣어 재현 가능)
+    """
     def __init__(self):
+        """네 탭을 만들고 빈 상태를 보여줍니다."""
         super().__init__()
         self.setDocumentMode(True)
         # 차트
@@ -118,10 +127,12 @@ class ResultTabs(QTabWidget):
         self.show_empty()
 
     def _data_info(self, loaded, total):
+        """데이터 탭 위 'N행 중 1~M행' 표시."""
         self.data_info.setText(f"{total:,}행 중 1~{loaded:,}행 표시 · 아래로 스크롤하면 이어서 불러옵니다 · 열 이름을 누르면 정렬"
                                if total else "데이터 없음")
 
     def set_data(self, df):
+        """데이터 탭에 분석 범위 데이터를 넣습니다 (열 너비는 처음 200행만 보고 계산, 속도)."""
         self.data_model.set_dataframe(df)
         self.data_view.horizontalHeader().setSortIndicator(-1, Qt.AscendingOrder)
         self.data_view.resizeColumnsToContents()
@@ -130,6 +141,7 @@ class ResultTabs(QTabWidget):
 
     @staticmethod
     def _page():
+        """스크롤되는 빈 페이지와 그 배치를 만듭니다."""
         page = QWidget()
         page.setObjectName("ResultPage")          # 흰 배경 (테마의 ResultPage 규칙)
         lay = QVBoxLayout(page)
@@ -138,10 +150,12 @@ class ResultTabs(QTabWidget):
         return page, lay
 
     def _set_page(self, scroll, page):
+        """탭 페이지 내용을 바꿉니다 (이전 내용은 지움)."""
         scroll.setWidget(page)
         scroll.viewport().setAutoFillBackground(False)
 
     def show_empty(self):
+        """'분석을 실행하면 결과가 여기에 나옵니다' 상태."""
         page, lay = self._page()
         lay.addStretch(1)
         lay.addWidget(label("분석을 실행하면 결과가 여기에 나옵니다.", "muted"), 0, Qt.AlignCenter)
@@ -154,6 +168,7 @@ class ResultTabs(QTabWidget):
         self.code.setPlainText("")
 
     def show_result(self, r):
+        """결과 하나를 보여줍니다 (show_results([r])와 같음)."""
         self.show_results([r])
 
     def show_results(self, results):
@@ -232,6 +247,7 @@ class ResultTabs(QTabWidget):
         self.code.setPlainText("\n\n".join(codes) or "# 이 결과에는 실행 코드가 없습니다.")
 
     def _save_csv(self, df, name):
+        """표 하나를 CSV로 저장하는 창을 엽니다."""
         path, _ = QFileDialog.getSaveFileName(self, "CSV 저장", f"{name}.csv", "CSV (*.csv)")
         if path:
             df.to_csv(path, encoding="utf-8-sig")
@@ -241,6 +257,7 @@ class ChartView(QLabel):
     """PNG 차트를 칸 너비에 맞춰 비율을 지키며 보여줍니다 (창 크기를 바꾸면 다시 맞춤)."""
 
     def __init__(self, image):
+        """image: ChartImage(PNG) 또는 matplotlib 그림 (그림이면 PNG로 바꿈)."""
         super().__init__()
         from PySide6.QtGui import QPixmap
         from ...result import ChartImage
@@ -254,6 +271,7 @@ class ChartView(QLabel):
         self._fit()
 
     def _fit(self):
+        """칸 너비에 맞춰 이미지를 다시 그립니다. 너비가 같으면 건너뜁니다 (크기 조정이 반복되는 것 방지)."""
         if self._pix.isNull():
             return
         w = max(240, min(self.width(), int(self._pix.width() * 1.1)))
@@ -263,11 +281,14 @@ class ChartView(QLabel):
         self.setPixmap(self._pix.scaledToWidth(w, Qt.SmoothTransformation))
 
     def resizeEvent(self, e):
+        """칸 크기가 바뀌면 이미지를 맞춥니다."""
         super().resizeEvent(e)
         self._fit()
 
     def heightForWidth(self, w):
+        """너비에 맞춘 이미지 높이 (비율 유지)."""
         return int(self._pix.height() * min(w, self._pix.width() * 1.1) / max(1, self._pix.width()))
 
     def hasHeightForWidth(self):
+        """너비에 따라 높이가 정해짐을 Qt에 알립니다."""
         return True

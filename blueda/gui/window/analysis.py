@@ -18,7 +18,15 @@ ALL_COLUMN_METHODS = ("check", "variable_types")
 
 class AnalysisMixin:
     # ------------------------------------------------------------------ 범위·메뉴·점검
+    """분석 범위(열·필터)를 만들고, 메뉴 선택·실행 전 점검·실행·결과 표시를 처리합니다."""
     def current_scope(self, for_method=None, params=None):
+        """지금 화면 상태로 분석 범위(AnalysisScope)를 만듭니다.
+
+        - 열: 왼쪽에서 체크한 열 (없으면 텍스트를 뺀 모든 열)
+        - 전처리 점검·변수 종류는 항상 모든 열 (ALL_COLUMN_METHODS)
+        - 입력칸이 있는 분석은 그 칸에서 고른 열만 (계산을 가볍게)
+        - 행: 필터 칩 + 직접 입력 조건
+        """
         m = self.main
         selected = m.columns.selected()
         cols = selected or [c for c, k in self.kinds.items() if k not in ("텍스트",)]
@@ -31,6 +39,7 @@ class AnalysisMixin:
         return AnalysisScope(columns=list(cols), filters=list(m.filters.filters), query=m.filters.query)
 
     def _scope_changed(self, *_):
+        """열·필터가 바뀌면 남는 행 수를 다시 세고, 데이터 탭과 실행 전 점검을 갱신합니다."""
         if self.df is None:
             return
         try:
@@ -45,6 +54,7 @@ class AnalysisMixin:
         self._refresh_data_tab()
 
     def _refresh_data_tab(self):
+        """데이터 탭에 지금 범위의 데이터를 보여줍니다."""
         try:
             scope = self.current_scope()
             mask, _ = scope.row_mask(self.df)
@@ -54,6 +64,7 @@ class AnalysisMixin:
             pass
 
     def choose_method(self, key):
+        """메뉴에서 분석을 고르면 설정 줄을 바꿉니다. 준비 중인 분석이면 안내(UNSUPPORTED)를 남깁니다."""
         method = M.BY_KEY.get(key)
         if method is None:
             return
@@ -68,6 +79,7 @@ class AnalysisMixin:
         self._precheck()
 
     def _precheck(self):
+        """실행 전 점검: 지금 범위의 데이터로 methods.precheck를 돌려 실행 버튼·안내를 정합니다."""
         if self.df is None or self.method is None:
             return
         bar = self.main.bar
@@ -83,6 +95,7 @@ class AnalysisMixin:
         bar.set_check(check, running=bool(self.worker and self.worker.isRunning()))
 
     def _change_type(self, column, kind):
+        """오른쪽 클릭으로 변수 종류를 바꾸면 엔진·열 목록·필터·설정 줄에 반영합니다."""
         if not self.bd:
             return
         self.bd.set_variable_type(column, kind)
@@ -96,6 +109,7 @@ class AnalysisMixin:
 
     # ------------------------------------------------------------------ 실행
     def run_analysis(self, key, params):
+        """분석을 작업 스레드에서 실행합니다 (창이 멈추지 않게). 동시에 하나만 실행합니다."""
         if self.worker and self.worker.isRunning():
             return
         self.last_run = (key, dict(params))
@@ -112,6 +126,7 @@ class AnalysisMixin:
         w.start()
 
     def _finished(self, before):
+        """분석이 끝나면 새 결과들을 결과 세션·결과 탭에 보이고 히스토리에 기록합니다."""
         new = self.bd.results[before:]
         for i, r in enumerate(new, start=before):
             self._log_result(r, i)
@@ -125,6 +140,7 @@ class AnalysisMixin:
         self._precheck()
 
     def _failed(self, method, msg):
+        """작업 스레드에서 예상하지 못한 오류가 나면 FAIL로 알립니다."""
         r = AnalysisResult(method.label, "FAIL", msg)
         self.bd.results.append(r)
         self._log_result(r, len(self.bd.results) - 1)
@@ -132,18 +148,22 @@ class AnalysisMixin:
         self._precheck()
 
     def _show_result(self, r):
+        """결과 하나를 결과 탭에 보입니다."""
         idx = self.bd.results.index(r) if r in self.bd.results else None
         self._log_result(r, idx)
         self.main.tabs.show_result(r)
 
     def _log_result(self, r, idx):
+        """결과 세션에 한 줄 추가합니다 (줄을 누르면 idx번째 결과를 다시 봄)."""
         short = r.message if len(r.message) <= 120 else r.message[:117] + "…"
         self.main.session.add(r.status, f"{r.name}  {short}", r.created_at, idx)
 
     def _reopen(self, idx):
+        """결과 세션 줄을 누르면 그 결과를 다시 보여줍니다."""
         if self.bd and 0 <= idx < len(self.bd.results):
             self.main.tabs.show_result(self.bd.results[idx])
 
     def log(self, status, text):
+        """결과 세션에 상태(INFO/FAIL 등)와 문장을 한 줄 남깁니다."""
         self.main.session.add(status, text, datetime.now().strftime("%H:%M:%S"))
 

@@ -15,6 +15,7 @@ ALPHA = 0.05  # 유의수준
 
 
 def normality(df, columns):
+    """정규성 검정: 5,000개 이하는 Shapiro-Wilk, 넘으면 D'Agostino(normaltest). 표본이 크면 작은 차이도 유의하게 나오니 그림과 함께 보세요."""
     code = f'''# [목적] 숫자 컬럼이 정규분포를 따르는지 검정 (귀무가설: 정규분포를 따른다)
 from scipy import stats
 for col in {columns!r}:
@@ -39,6 +40,7 @@ for col in {columns!r}:
 
 
 def equal_variance(df, columns, group_col):
+    """등분산 검정 (Levene, center=median = Brown-Forsythe). t검정·분산분석의 Student/Welch 선택에 씁니다."""
     code = f'''# [목적] 그룹({group_col!r})별 분산이 같은지 검정 (귀무가설: 분산이 같다)
 from scipy import stats
 for col in {columns!r}:
@@ -59,6 +61,7 @@ for col in {columns!r}:
 
 
 def correlation(df, columns):
+    """수치형 열들의 상관행렬 (Pearson). 상관은 인과가 아님(CAUSATION_NOTE)을 함께 안내합니다."""
     code = f'''# [목적] 숫자 컬럼 간 상관관계 확인
 sub = df[{columns!r}]
 pearson = sub.corr(method="pearson")      # 선형 관계의 강도

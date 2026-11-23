@@ -74,6 +74,7 @@ def _row_weights(col):
 
 
 def _weighted_mean(flags, weights):
+    """참/거짓 목록의 비율. weights가 있으면 행 수로 가중 (category 열을 행 기준으로 세기 위해)."""
     if weights is None:
         return float(flags.mean())
     return float((flags.to_numpy() * weights).sum() / weights.sum())
@@ -114,6 +115,7 @@ for col in df.select_dtypes(include=["object", "string", "category"]):  # 글자
 
 
 def _check_missing(df, warn_ratio):
+    """2. 결측: 열마다 결측 비율. warn_ratio(기본 5%)를 넘으면 이슈."""
     code = '''# [목적] 컬럼별 결측치 개수와 비율 확인
 missing = df.isnull().sum()               # 컬럼별 결측치 개수
 missing_ratio = missing / len(df)         # 전체 행 대비 결측 비율
@@ -126,6 +128,7 @@ print(missing_ratio[missing_ratio > 0].sort_values(ascending=False))  # 결측 �
 
 
 def _check_duplicates(df):
+    """3. 중복: 모든 열이 같은 행의 수."""
     code = '''# [목적] 완전히 같은 행(중복 행) 개수 확인
 dup_count = df.duplicated().sum()         # duplicated(): 앞에 같은 행이 있으면 True
 print(dup_count)'''
@@ -155,6 +158,7 @@ def _outlier_columns(df):
 
 
 def _check_outliers(df, k):
+    """4. 이상치: IQR×k 경계 밖 값의 수 (이산값·0/1·ID 열 제외). 이상치는 '확인 권장'이며 '전처리 필요'로 보지 않습니다."""
     code = f'''# [목적] 숫자 컬럼의 이상치 후보를 IQR 기준으로 찾기
 # 값 종류가 {DISCRETE_MAX_UNIQUE}개 이하인 열(0/1, 단계형 값)과 ID 후보 열은 제외합니다.
 num = df.select_dtypes(include="number")
@@ -184,6 +188,7 @@ print(outlier_count[outlier_count > 0])'''
 
 
 def _check_categories(df):
+    """5. 범주 불일치: 앞뒤 공백·대소문자만 다른 값(예: 'Seoul'과 'seoul ')이 있는 열."""
     code = '''# [목적] 같은 범주인데 공백·대소문자만 다른 값 찾기 (예: "Seoul", "seoul ", "SEOUL")
 for col in df.select_dtypes(include=["object", "string", "category"]):
     raw = df[col].dropna().astype(str)
@@ -203,6 +208,7 @@ for col in df.select_dtypes(include=["object", "string", "category"]):
 
 
 def _check_units(df):
+    """6. 단위: '10kg', '1,000원'처럼 숫자에 단위가 붙은 값이 대부분인 열 (숫자로 계산하려면 단위를 떼야 함)."""
     code = r'''# [목적] 숫자 뒤에 단위가 붙어 문자열이 된 값 찾기 (예: "10kg", "1,000원")
 import re
 pattern = re.compile(r"^\s*-?[\d,]+(\.\d+)?\s*([A-Za-z%가-힣]+)\s*$")
@@ -258,6 +264,7 @@ REVIEW_ONLY = ("4. 이상치",)
 
 
 def _verdict(report):
+    """최종 판단 문구: 전처리 필요 / 바로 분석 가능(이상치 확인 권장) / 전처리 없이 분석 가능."""
     if report["needs_preprocessing"]:
         return "전처리 필요"
     if report["needs_review"]:

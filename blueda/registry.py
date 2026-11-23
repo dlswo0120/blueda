@@ -66,10 +66,12 @@ CAPABILITIES = {
 
 
 def get(key):
+    """기능 키로 기능 정보(Capability)를 찾습니다. 없으면 None."""
     return CAPABILITIES.get(key)
 
 
 def is_available(key):
+    """기능이 지금 지원되는지."""
     cap = get(key)
     return cap is not None and cap[2] == AVAILABLE
 
@@ -105,6 +107,7 @@ def unsupported_notice(key, request_log_dir="logs", user_text=""):
 
 
 def _record_request(log_dir, key, name, area, user_text):
+    """미지원 기능 요청을 update_requests.csv에 남깁니다 (운영자가 다음 업데이트 우선순위를 정할 때 참고)."""
     os.makedirs(log_dir, exist_ok=True)
     path = os.path.join(log_dir, "update_requests.csv")
     new = not os.path.exists(path)

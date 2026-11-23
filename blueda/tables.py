@@ -28,6 +28,7 @@ TOTAL = "전체"
 
 # ── 공통 도우미 ──────────────────────────────────────────────
 def is_date_like(s):
+    """날짜 열인지: 이미 날짜형이거나, 글자인데 날짜처럼 읽히면 True."""
     if pd.api.types.is_datetime64_any_dtype(s):
         return True
     if s.dtype == object or isinstance(s.dtype, pd.CategoricalDtype) or pd.api.types.is_string_dtype(s):
@@ -53,10 +54,12 @@ def group_key(df, col, date_unit="월"):
 
 
 def _agg_code(agg):
+    """한국어 집계 이름 → pandas 집계 이름 (예: '합계' → 'sum')."""
     return AGGS.get(agg, "sum")
 
 
 def _round(t):
+    """표 숫자를 소수 4자리로 반올림 (표가 아니면 그대로)."""
     return t.round(4) if hasattr(t, "round") else t
 
 
@@ -168,6 +171,7 @@ def heavy_tail(x):
 
 
 def _style(ax, title, xlabel="", ylabel=""):
+    """차트 공통 모양: 왼쪽 정렬 제목(범례가 위에 있으면 간격을 둠), 옅은 가로 격자, 천 단위 쉼표 축."""
     has_legend = ax.get_legend() is not None
     ax.set_title(title, loc="left", fontsize=11, pad=44 if has_legend else 6)
     ax.set_xlabel(xlabel)
@@ -190,6 +194,7 @@ def _limit_series(keys_series, weights=None, k=MAX_SERIES):
 
 
 def _colors(names):
+    """계열 이름 순서대로 색을 줍니다 ('기타'는 회색). 같은 순서면 항상 같은 색입니다."""
     cols, i = [], 0
     for n in names:
         if n == "기타":
@@ -228,6 +233,7 @@ def _aggregate(df, keys, y, agg, names=None):
 
 
 def _bar(df, x, y, color, agg, date_unit, top_n):
+    """막대 차트: X(범주·날짜)별 Y 집계. 범주면 큰 값부터 정렬하고 상위 top_n개만, 색 구분이 있으면 묶음 막대."""
     xs, x_expr, x_date = group_key(df, x, date_unit)
     ylabel = f"{y} {agg}" if y else "개수"
     notes = []
@@ -266,6 +272,7 @@ def _bar(df, x, y, color, agg, date_unit, top_n):
 
 
 def _line(df, x, y, color, agg, date_unit, top_n):
+    """선 차트: X(날짜·수치) 순서대로 Y 집계. 날짜는 단위별로 묶고, 값 종류가 많은 수치 X는 구간으로 묶습니다."""
     xs, x_expr, x_date = group_key(df, x, date_unit)
     ylabel = f"{y} {agg}" if y else "개수"
     notes = []
@@ -305,6 +312,7 @@ def _line(df, x, y, color, agg, date_unit, top_n):
 
 
 def _scatter(df, x, y, color, agg, date_unit, top_n):
+    """산점도: 점은 표본으로 그리고, Pearson r은 전체 데이터로 계산합니다 (점 3개 미만·상수 열이면 '계산 불가')."""
     cols = [x, y] + ([color] if color else [])
     data = df[cols].dropna()
     if data.empty:
@@ -342,6 +350,7 @@ def _scatter(df, x, y, color, agg, date_unit, top_n):
 
 
 def _hist(df, x, y, color, agg, date_unit, top_n):
+    """히스토그램: 정수 데이터는 구간 경계를 n.5에 맞추고, 꼬리가 아주 길면 가운데 99%만 그립니다."""
     col = x or y
     data = df[[col] + ([color] if color else [])].dropna()
     if data.empty:
@@ -385,6 +394,7 @@ def _hist(df, x, y, color, agg, date_unit, top_n):
 
 
 def _box(df, x, y, color, agg, date_unit, top_n):
+    """상자그림: X를 고르면 그룹별(행 수 많은 순 최대 BOX_MAX_GROUPS개), 아니면 Y 하나. 양수이고 꼬리가 길면 로그 축."""
     col = y or x
     group = x if (y and x) else None
     notes = []
@@ -434,6 +444,7 @@ def _box(df, x, y, color, agg, date_unit, top_n):
 
 
 def _heatmap(df, x, y, color, agg, date_unit, top_n):
+    """상관 히트맵: 고른 수치형 열(ID·0/1·상수 제외)의 Pearson 상관. 파랑 음수, 빨강 양수, 12열 이하면 숫자 표시."""
     num = df.select_dtypes(include="number")
     from .variables import is_strong_id
     num = num[[c for c in num.columns if not is_strong_id(num[c], c) and num[c].nunique() > 2]]   # 빈 열·상수·0/1 제외

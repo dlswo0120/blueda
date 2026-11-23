@@ -53,6 +53,7 @@ def record_environment(seed=None, data_path=None):
 
 
 def save_environment(info, log_dir="logs", session_name="session"):
+    """실행 환경(파이썬·라이브러리 버전, 데이터 해시, 시드)을 JSON으로 저장합니다. 같은 결과를 다시 얻는 데 필요합니다."""
     os.makedirs(log_dir, exist_ok=True)
     path = os.path.join(log_dir, f"env_{session_name}.json")
     with open(path, "w", encoding="utf-8") as f:

@@ -24,6 +24,16 @@ class Blueda:
     """
 
     def __init__(self, df, config=None, data_path=None, session_name=None):
+        """분석 세션을 만듭니다.
+
+        주요 속성
+        - df: 원본 데이터 (분석 범위를 적용해도 바뀌지 않음, 날짜 변환만 직접 바꿈)
+        - scope: 분석 범위(열·필터). 각 분석은 scope를 적용한 데이터(sub)로 계산
+        - config: 설정값(BluedaConfig)
+        - results: 실행한 결과가 순서대로 쌓이는 목록 (결과 세션)
+        - log: 목적→코드→결과→해석 로그
+        - var_types: 사용자가 직접 지정한 변수 종류 {열: 종류}
+        """
         self.df = df
         self.config = config or BluedaConfig()
         self.data_path = data_path
@@ -66,6 +76,11 @@ print(df.head())                                    # 앞 5행 미리보기'''
 
     # ---------- 분석 범위 ----------
     def set_scope(self, columns=None, query="", row_start=None, row_end=None, dropna=False, filters=None):
+        """분석 범위를 정합니다. 이후 모든 분석은 이 범위의 데이터로 계산합니다.
+
+        인자: columns 쓸 열(비우면 전체), filters 필터 칩 목록(scope.Filter), query pandas query 문법(고급),
+              row_start/row_end 행 구간, dropna 고른 열에 결측 있는 행 제외
+        """
         self.scope = AnalysisScope(columns=columns or [], filters=filters or [], query=query,
                                    row_start=row_start, row_end=row_end, dropna=dropna)
         sub, _ = self.scope.apply(self.df)  # 잘못된 열 이름이면 여기서 바로 에러
@@ -73,6 +88,7 @@ print(df.head())                                    # 앞 5행 미리보기'''
         return sub
 
     def scoped(self):
+        """분석 범위를 적용한 데이터(DataFrame)를 돌려줍니다."""
         sub, _ = self.scope.apply(self.df)
         return sub
 
@@ -90,6 +106,12 @@ print(df.head())                                    # 앞 5행 미리보기'''
         return result
 
     def _run(self, func, **kwargs):
+        """분석 함수를 범위 적용 데이터로 실행하고 결과를 세션에 쌓습니다.
+
+        어떤 오류가 나도 프로그램이 멈추지 않도록 FAIL 결과로 바꿔 기록합니다.
+        - UserFacingError: 조건이 맞지 않는 경우 → 안내 문장만
+        - 그 밖의 오류: '예상하지 못한 오류' + 오류 이름 (원인 파악용)
+        """
         try:
             sub, scope_code = self.scope.apply(self.df)
             result = func(sub, **kwargs)
@@ -169,11 +191,13 @@ print(df.head())                                    # 앞 5행 미리보기'''
         return self._run(variables.check_analysis_unit, key_columns=key_columns, unit_name=unit_name)
 
     def zscore(self, threshold=None):
+        """z점수 = (값 − 평균) / 표준편차. |z|가 기준(설정 z_threshold, 관례 3)보다 큰 행을 이상값 후보로 보여줍니다."""
         threshold = threshold if threshold is not None else self.config.z_threshold
         return self._run(descriptive.zscores, threshold=threshold, var_types=self.var_types)
 
     # ---------- 2) 추론통계 ----------
     def sampling_distribution(self, column, sample_size=30, n_samples=1000):
+        """표본분포 실험: 크기 sample_size 표본을 n_samples번 뽑아 표본평균의 분포를 그립니다 (중심극한정리 확인)."""
         return self._run(inferential.sampling_distribution, column=column, sample_size=sample_size,
                          n_samples=n_samples, seed=self.config.random_seed)
 
@@ -184,29 +208,36 @@ print(df.head())                                    # 앞 5행 미리보기'''
         return self._run(inferential.confidence_interval_mean, column=column, level=level)
 
     def one_sample_ttest(self, column, mu0, alternative="two-sided"):
+        """단일표본 t검정: 평균이 기준값 mu0과 다른지 검정합니다. alternative: two-sided / greater / less"""
         return self._run(inferential.one_sample_ttest, column=column, mu0=mu0,
                          alpha=self.config.alpha, alternative=alternative)
 
     # ---------- 3) 이변량 ----------
     def t_test(self, group_col, value_col, groups=None, method="auto", alternative="two-sided"):
+        """독립표본 t검정 (그룹 2개). method='auto'면 등분산 검정 결과로 Student/Welch를 고릅니다."""
         return self._run(bivariate.t_test, group_col=group_col, value_col=value_col, groups=groups,
                          alpha=self.config.alpha, method=method, alternative=alternative)
 
     def anova(self, group_col, value_col, posthoc=True):
+        """일원분산분석 (그룹 2개 이상). posthoc=True면 Tukey 사후검정을 붙입니다."""
         return self._run(bivariate.anova, group_col=group_col, value_col=value_col,
                          alpha=self.config.alpha, posthoc=posthoc)
 
     def chi_square(self, row_col, col_col):
+        """카이제곱 독립성 검정 (범주형 2개)."""
         return self._run(bivariate.chi_square, row_col=row_col, col_col=col_col, alpha=self.config.alpha)
 
     def correlation_test(self, x, y):
+        """상관 검정 (수치형 2개): Pearson과 Spearman."""
         return self._run(bivariate.correlation_test, x=x, y=y, alpha=self.config.alpha)
 
     def simple_regression(self, x, y):
+        """단순회귀: x로 y를 설명하는 직선."""
         return self._run(bivariate.simple_regression, x=x, y=y, alpha=self.config.alpha)
 
     # ---------- 4) 다변량 ----------
     def multiple_regression(self, y, xs, standardize=False):
+        """다중회귀: 여러 독립변수 xs로 y를 설명. 범주형은 더미 변수로 바꾸고 VIF(다중공선성)를 함께 봅니다."""
         return self._run(multivariate.multiple_regression, y=y, xs=list(xs),
                          alpha=self.config.alpha, standardize=standardize)
 
@@ -245,16 +276,19 @@ print(df.head())                                    # 앞 5행 미리보기'''
 
     @staticmethod
     def capabilities(status=None):
+        """지원하는 기능 목록(registry)을 표로 돌려줍니다. status로 '지원'/'예정'만 볼 수 있습니다."""
         return pd.DataFrame(registry.list_capabilities(status))
 
     # ---------- 내보내기 ----------
     def export_csv(self, out_dir=None):
+        """지금까지의 결과 표를 CSV 파일들로 저장합니다 (표마다 한 파일, 엑셀에서 한글이 깨지지 않게 utf-8-sig)."""
         out_dir = out_dir or f"{self.config.log_dir}/export_{self.log.session_name}"
         paths = export.to_csv(self.results, out_dir)
         print(f"[BLUEDA] CSV {len(paths)}개 저장: {out_dir}")
         return paths
 
     def export_excel(self, path=None, include_charts=True):
+        """지금까지의 결과를 Excel 한 파일로 저장합니다 (요약 시트 + 표마다 시트 + 차트 시트)."""
         path = path or f"{self.config.log_dir}/result_{self.log.session_name}.xlsx"
         export.to_excel(self.results, path, include_charts)
         print(f"[BLUEDA] Excel 저장: {path}")
@@ -268,6 +302,7 @@ print(df.head())                                    # 앞 5행 미리보기'''
                          missing_warn_ratio=self.config.missing_warn_ratio)
 
     def check(self):
+        """전처리 점검을 실행하고 판단 결과(dict)를 돌려줍니다. 화면에서는 preprocess_check()를 씁니다."""
         self.report = check_preprocessing(
             self.df, self.log, self.config.outlier_iqr_k, self.config.missing_warn_ratio
         )
@@ -276,6 +311,7 @@ print(df.head())                                    # 앞 5행 미리보기'''
 
     # ---------- E (선택) ----------
     def set_source(self, **kwargs):
+        """데이터 출처·라이선스 정보를 기록합니다 (보고서·로그에 출처 표기용)."""
         if not self.config.check_source_license:
             print("[BLUEDA] E(출처·이용조건 확인)이 꺼져 있습니다. config.check_source_license=True로 켜세요.")
             return []
@@ -288,6 +324,7 @@ print(df.head())                                    # 앞 5행 미리보기'''
 
     # ---------- F (선택) ----------
     def stats(self, columns=None, group_col=None, checks=None):
+        """통계 가정 점검(정규성·등분산·상관)을 원하는 것만 골라 실행합니다."""
         checks = checks if checks is not None else self.config.stat_checks
         if not checks:
             print("[BLUEDA] 선택한 통계 검사가 없습니다. config.stat_checks에 원하는 검사를 넣으세요.")
@@ -302,12 +339,14 @@ print(df.head())                                    # 앞 5행 미리보기'''
 
     # ---------- G (선택) ----------
     def link_lecture(self, step_no, concept, source):
+        """분석 단계에 강의 개념을 연결해 로그에 남깁니다 (설정 link_lecture_concepts가 켜져 있을 때)."""
         if not self.config.link_lecture_concepts:
             return
         self.log.link_lecture(step_no, concept, source)
 
     # ---------- B·C 저장 ----------
     def save(self):
+        """분석 로그를 .md(읽기용)·.py(재실행용)·환경 정보 .json으로 저장하고 경로를 돌려줍니다."""
         md, py = self.log.save(include_lecture_links=self.config.link_lecture_concepts)
         env = record_environment(self.config.random_seed, self.data_path)
         env_path = save_environment(env, self.config.log_dir, self.log.session_name)

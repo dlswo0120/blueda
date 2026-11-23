@@ -12,7 +12,9 @@ from datetime import datetime
 
 
 class AnalysisLogger:
+    """분석 로그: 단계마다 목적 → 실행 코드 → 결과 → 해석을 기록하고 .md(읽기용)·.py(재실행용)로 저장합니다."""
     def __init__(self, log_dir="logs", print_code=True, session_name=None):
+        """print_code=True면 단계마다 코드를 화면(터미널)에도 출력합니다."""
         self.log_dir = log_dir
         self.print_code = print_code
         self.session_name = session_name or datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -54,6 +56,7 @@ class AnalysisLogger:
 
     # ------------------------------------------------------------
     def _print_step(self, step):
+        """단계 하나를 터미널에 출력합니다."""
         line = "=" * 60
         print(f"\n{line}\n[STEP {step['no']}] 목적: {step['purpose']}\n{line}")
         print("[코드]")
@@ -65,6 +68,7 @@ class AnalysisLogger:
             print(f"[해석] {step['interpretation']}")
 
     def to_markdown(self, include_lecture_links=True):
+        """전체 로그를 마크다운 문서로 만듭니다. 강의 개념 연결은 설정에 따라 포함합니다."""
         lines = [f"# BLUEDA 분석 로그 ({self.session_name})", ""]
         for s in self.steps:
             lines += [f"## STEP {s['no']}. {s['purpose']}", "", "**코드**", "", "```python", s["code"], "```", ""]
@@ -83,6 +87,7 @@ class AnalysisLogger:
         return "\n".join(parts)
 
     def save(self, include_lecture_links=True):
+        """로그를 .md와 .py로 저장하고 경로를 돌려줍니다."""
         os.makedirs(self.log_dir, exist_ok=True)
         md_path = os.path.join(self.log_dir, f"log_{self.session_name}.md")
         py_path = os.path.join(self.log_dir, f"code_{self.session_name}.py")

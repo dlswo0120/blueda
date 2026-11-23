@@ -15,12 +15,20 @@ from .base import button
 # 아래: 결과 세션 (터미널 스타일)
 # ======================================================================
 class SessionPanel(QFrame):
+    """아래쪽 결과 세션 (터미널 스타일).
+
+    - 결과 세션 탭: 시각·상태(SUCCESS/FAIL/UNSUPPORTED/RUN/INFO)·내용. 결과 줄을 누르면 그 결과를 다시 봄
+    - 히스토리 탭: 조회 기록. 누르면 그때 조건으로 되돌림
+    - 명령 입력칸: help, show, rows 등
+    신호: resultClicked(결과 번호) / command(명령 글자) / historyClicked(기록 번호) / historyClearRequested
+    """
     resultClicked = Signal(int)
     command = Signal(str)
     historyClicked = Signal(int)       # 히스토리 목록에서 누른 기록 번호 (store.entries 안의 위치)
     historyClearRequested = Signal()
 
     def __init__(self):
+        """탭 버튼(결과 세션|히스토리), 두 목록(QStackedWidget), 명령 입력칸을 만듭니다."""
         super().__init__()
         self.setObjectName("SessionBox")
         lay = QVBoxLayout(self)
@@ -96,6 +104,7 @@ class SessionPanel(QFrame):
         return it
 
     def show_page(self, i):
+        """0: 결과 세션, 1: 히스토리. 히스토리를 열면 최신 기록(맨 아래)으로 스크롤합니다."""
         self.pages.setCurrentIndex(i)
         self.tab_session.setChecked(i == 0)
         self.tab_history.setChecked(i == 1)
@@ -130,11 +139,13 @@ class SessionPanel(QFrame):
         self.history_info.setText(info)
 
     def _click(self, it):
+        """결과 줄을 누르면 resultClicked 신호를 보냅니다 (결과가 없는 INFO 줄은 무시)."""
         idx = it.data(Qt.UserRole)
         if idx is not None:
             self.resultClicked.emit(idx)
 
     def _enter(self):
+        """명령 입력칸에서 Enter를 누르면 command 신호를 보내고 칸을 비웁니다."""
         t = self.input.text().strip()
         self.input.clear()
         if t:

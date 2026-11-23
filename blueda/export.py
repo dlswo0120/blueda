@@ -18,6 +18,7 @@ def _safe_name(name, max_len=31):
 
 
 def to_csv(results, out_dir):
+    """결과의 표를 CSV로 저장합니다. 파일 이름은 '분석 이름_표 이름.csv'이고 저장한 경로 목록을 돌려줍니다."""
     os.makedirs(out_dir, exist_ok=True)
     paths = []
     for r in results:
@@ -29,6 +30,7 @@ def to_csv(results, out_dir):
 
 
 def to_excel(results, path, include_charts=True):
+    """결과를 Excel 한 파일로 저장합니다. 시트 이름은 Excel 규칙(31자, 특수문자 금지)에 맞게 바꾸고 중복을 피합니다."""
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     used = set()
     with pd.ExcelWriter(path, engine="openpyxl") as writer:

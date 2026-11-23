@@ -42,23 +42,40 @@ __all__ = ["MainWindow", "SettingsDialog", "ColumnChooser", "HELP", "ALL_COLUMN_
 
 
 class MainWindow(HistoryMixin, LoadingMixin, IssuesMixin, DatesMixin, AnalysisMixin, CommandsMixin, QMainWindow):
+    """BLUEDA 프로그램 창.
+
+    주요 상태 변수
+    - df: 열린 데이터 (bd.df와 같은 객체)
+    - bd: 분석 엔진(Blueda). 결과 세션 bd.results를 가짐
+    - kinds: 열마다 변수 종류 {열: 수치형/범주형/날짜/ID 후보/텍스트}
+    - info: 파일 판별 정보(FileInfo)
+    - method: 지금 고른 분석(methods.Method)
+    - worker: 파일 읽기·분석을 돌리는 작업 스레드 (동시에 하나만)
+    - _bg_workers: 뒤에서 도는 이슈 점검 스레드들 (끝날 때까지 참조를 잡아 둠)
+    - history: 조회 히스토리 저장소, issues: 현재 파일의 이슈 목록
+    - _restoring: 히스토리 되돌리는 중이면 True (그동안은 기록하지 않음)
+    """
     def __init__(self, settings_path=None):
+        """설정을 불러오고 시작 화면·메인 화면을 만든 뒤 화면 부품의 신호를 처리 함수에 연결합니다.
+
+        settings_path: 설정 파일 위치 (테스트에서 임시 폴더를 쓰려고 바꿀 수 있음, 비우면 사용자 폴더)
+        """
         super().__init__()
-        self.settings_path = settings_path
+        self.settings_path = settings_path  # 설정·히스토리 파일 위치 (None이면 사용자 폴더)
         self.cfg, self.ui = load_settings(settings_path)
-        self._restoring = False
-        self.last_run = None
+        self._restoring = False  # 히스토리 되돌리는 중이면 True → 그동안 생기는 변화는 기록하지 않음
+        self.last_run = None  # 마지막 실행 (분석 키, 입력값). 끝났을 때 히스토리에 남기려고 기억
         self.history = HistoryStore(os.path.dirname(settings_path or default_settings_path()),
                                     self.cfg.history_max_entries, self.cfg.history_max_days,
                                     self.ui.get("history_mask", True))
         self.cfg.print_code = False
-        self.bd = None
-        self.df = None
-        self.kinds = {}
-        self.info = None
-        self.method = None
-        self.worker = None
-        self.load_started = 0.0
+        self.bd = None  # 분석 엔진(Blueda). '분석 시작'을 누르면 만들어짐
+        self.df = None  # 열린 데이터 (bd.df와 같은 객체 → 날짜 변환이 양쪽에 반영됨)
+        self.kinds = {}  # {열: 변수 종류}. 칸에 맞는 열 고르기·필터 창 종류에 씀
+        self.info = None  # 파일 판별 정보(FileInfo): 경로·형식·인코딩
+        self.method = None  # 지금 고른 분석(methods.Method)
+        self.worker = None  # 읽기·분석 작업 스레드 (동시에 하나만, 실행 중 참조를 놓치면 강제 종료)
+        self.load_started = 0.0  # 읽기 시작 시각 (남은 시간 추정용)
         self.setWindowTitle("BLUEDA")
         self.resize(1440, 900)
 
@@ -68,7 +85,7 @@ class MainWindow(HistoryMixin, LoadingMixin, IssuesMixin, DatesMixin, AnalysisMi
         rl.setContentsMargins(0, 0, 0, 0)
         rl.setSpacing(0)
         rl.addWidget(self._header())
-        self.stack = QStackedWidget()
+        self.stack = QStackedWidget()  # 시작 화면 ↔ 메인 화면 전환
         self.start = StartPage()
         self.main = MainPage()
         self.stack.addWidget(self.start)
@@ -96,6 +113,7 @@ class MainWindow(HistoryMixin, LoadingMixin, IssuesMixin, DatesMixin, AnalysisMi
         self.refresh_history_panel()
 
     def _running(self):
+        """지금 돌고 있는 작업을 (읽기·분석 스레드 또는 None, 이슈 점검 스레드 목록)으로 돌려줍니다."""
         main = self.worker if (self.worker is not None and self.worker.isRunning()) else None
         bg = [w for w in getattr(self, "_bg_workers", []) if w.isRunning()]
         return main, bg
@@ -129,6 +147,7 @@ class MainWindow(HistoryMixin, LoadingMixin, IssuesMixin, DatesMixin, AnalysisMi
         self._close_when_idle()
 
     def _close_when_idle(self):
+        """'끝나면 닫기'를 고른 뒤, 남은 작업이 모두 끝났는지 확인하고 끝났으면 창을 닫습니다 (아니면 0.1초 뒤 다시 확인)."""
         if not getattr(self, "_close_pending", False):
             return
         main, bg = self._running()
@@ -140,6 +159,7 @@ class MainWindow(HistoryMixin, LoadingMixin, IssuesMixin, DatesMixin, AnalysisMi
 
     # ------------------------------------------------------------------ 상단 바
     def _header(self):
+        """상단 바: BLUEDA 이름, 파일 정보, [!] 이슈 버튼, 오프라인 표시, 화면 모드·설정·내보내기·보고서 버튼."""
         h = QFrame()
         h.setObjectName("Header")
         h.setFixedHeight(52)
@@ -180,22 +200,26 @@ class MainWindow(HistoryMixin, LoadingMixin, IssuesMixin, DatesMixin, AnalysisMi
         return h
 
     def _header_enabled(self, on):
+        """파일이 열려 있을 때만 내보내기·보고서 버튼을 켭니다."""
         for b in (self.export_btn, self.report_btn):
             b.setEnabled(on)
 
     # ------------------------------------------------------------------ 화면 모드·설정
     def apply_theme(self):
+        """라이트/다크 스타일을 창 전체에 적용합니다 (다크는 바깥 배경만 어둡게, 패널 안은 그대로)."""
         dark = self.ui.get("theme") == "dark"
         QApplication.instance().setStyleSheet(theme.stylesheet(dark))
         self.theme_btn.setText("☀" if dark else "☾")
         self.theme_btn.setToolTip("라이트 모드로" if dark else "다크 모드로")
 
     def toggle_theme(self):
+        """☾/☀ 버튼: 라이트 ↔ 다크 전환 후 설정에 저장합니다."""
         self.ui["theme"] = "light" if self.ui.get("theme") == "dark" else "dark"
         self.apply_theme()
         self._save_settings()
 
     def open_settings(self):
+        """설정 창을 열고, 저장을 누르면 값을 적용합니다 (차트 표본 크기, 히스토리 설정, 이슈 다시 계산 포함)."""
         dlg = SettingsDialog(self.cfg, self.ui, self)
         dlg.move(self.geometry().right() - dlg.sizeHint().width() - 24, self.geometry().top() + 70)
         if dlg.exec():
@@ -214,6 +238,7 @@ class MainWindow(HistoryMixin, LoadingMixin, IssuesMixin, DatesMixin, AnalysisMi
                 a=self.cfg.alpha, k=self.cfg.outlier_iqr_k, z=self.cfg.z_threshold, n=self.cfg.chart_sample_size))
 
     def _save_settings(self):
+        """설정을 PC에 저장합니다. 실패하면 결과 세션에 FAIL로 알립니다."""
         try:
             save_settings(self.cfg, self.ui, self.settings_path)
         except OSError as e:
@@ -221,6 +246,7 @@ class MainWindow(HistoryMixin, LoadingMixin, IssuesMixin, DatesMixin, AnalysisMi
 
 
 def main(argv=None):
+    """프로그램 시작점 (python -m blueda). 기본 글꼴을 정하고 창을 띄운 뒤 이벤트 루프를 돌립니다."""
     os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
     app = QApplication.instance() or QApplication(argv if argv is not None else sys.argv)
     f = QFont()

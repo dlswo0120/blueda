@@ -15,9 +15,14 @@ from .base import button
 # 왼쪽: 분석 메뉴 (방법별 / 질문별)
 # ======================================================================
 class MethodMenu(QWidget):
+    """왼쪽 분석 메뉴. '방법별'(그룹별 목록)과 '질문별'(예: 두 그룹 평균이 다른가요?) 두 가지 보기.
+
+    신호: methodChosen(분석 키). 준비 중인 분석도 보여주고 누르면 안내합니다.
+    """
     methodChosen = Signal(str)
 
     def __init__(self):
+        """위쪽 세그먼트 버튼(방법별/질문별)과 목록을 만듭니다."""
         super().__init__()
         box = QVBoxLayout(self)
         box.setContentsMargins(0, 0, 0, 0)
@@ -44,11 +49,13 @@ class MethodMenu(QWidget):
         self._fill_methods()
 
     def _mode(self, methods_view):
+        """보기 전환 (True: 방법별, False: 질문별)."""
         self.by_method.setChecked(methods_view)
         self.by_question.setChecked(not methods_view)
         self._fill_methods() if methods_view else self._fill_questions()
 
     def _group_header(self, text):
+        """그룹 제목 줄(누를 수 없음)을 추가합니다."""
         it = QListWidgetItem(text)
         it.setFlags(Qt.NoItemFlags)
         f = it.font()
@@ -78,6 +85,7 @@ class MethodMenu(QWidget):
         self.list.setItemWidget(it, w)
 
     def _fill_methods(self):
+        """방법별 목록: 그룹 제목 + 항목(이름 14px, 한 줄 설명 11px)."""
         self.list.clear()
         for g in M.GROUPS:
             self._group_header(g)
@@ -85,6 +93,7 @@ class MethodMenu(QWidget):
                 self._entry(m.label + ("" if m.available else " (준비 중)"), m.desc, m.key, m.available)
 
     def _fill_questions(self):
+        """질문별 목록: 질문 문장 → 해당 분석."""
         self.list.clear()
         self._group_header("무엇을 알고 싶나요?")
         for m in M.METHODS:
@@ -92,12 +101,14 @@ class MethodMenu(QWidget):
                 self._entry(m.question, "→ " + m.label, m.key)
 
     def select(self, key):
+        """key 분석을 목록에서 선택 표시합니다 (신호는 보내지 않음)."""
         for i in range(self.list.count()):
             if self.list.item(i).data(Qt.UserRole) == key:
                 self.list.setCurrentRow(i)
                 return
 
     def _clicked(self, it):
+        """항목을 누르면 methodChosen 신호를 보냅니다."""
         key = it.data(Qt.UserRole)
         if key:
             self.methodChosen.emit(key)

@@ -19,7 +19,15 @@ from ..widgets import Worker
 
 class LoadingMixin:
     # ------------------------------------------------------------------ 파일 불러오기
+    """파일 열기 흐름: 판별 → 메모리 확인 → 작업 스레드로 읽기(진행률·취소) → 시작 화면 → '분석 시작'으로 메인 화면."""
     def open_file(self, path):
+        """파일을 엽니다.
+
+        1) 읽기·분석 중이면 안내만 하고 열지 않음 (실행 중인 스레드를 잃으면 강제 종료)
+        2) 이전 파일의 이슈·날짜 창을 정리
+        3) 형식 판별, 예상 메모리가 PC 메모리의 절반을 넘으면 '일부 열만 읽기' 확인
+        4) 작업 스레드에서 읽고(메모리 최적화 포함) 변수 종류를 판단
+        """
         if self.worker is not None and self.worker.isRunning():
             # 읽기·분석 스레드가 도는 중에 새 작업을 시작하면 실행 중인 스레드를 잃어 강제 종료될 수 있음
             msg = "진행 중인 작업이 끝난 뒤에 다른 파일을 열어 주세요."
@@ -72,6 +80,7 @@ class LoadingMixin:
         w = Worker(None)
 
         def job():
+            """작업 스레드에서 실행: 파일 읽기 + 변수 종류 판단. (info, df, 읽기 코드, kinds)를 돌려줍니다."""
             info2, df, code = load_file(path, progress=w.progress.emit, cancelled=w.is_cancelled,
                                         usecols=usecols, optimize=True)
             kinds = M.column_kinds(df, max_categories=self.cfg.category_max_unique)
@@ -87,21 +96,25 @@ class LoadingMixin:
         w.start()
 
     def _load_progress(self, p):
+        """읽기 진행률과 남은 시간(지금까지 걸린 시간으로 추정)을 보여줍니다."""
         spent = time.time() - self.load_started
         left = spent / p - spent if p > 0.02 else None
         self.start.set_progress(p, f"읽는 중 {p:.0%}" + (f" · 약 {left:,.0f}초 남음" if left else ""))
 
     def _cancel_load(self):
+        """취소 버튼: 읽기 스레드에 취소를 알립니다 (다음 묶음을 읽기 전에 멈춤)."""
         if self.worker and self.worker.isRunning():
             self.worker.cancel()
 
     def _load_failed(self, msg):
+        """읽기 실패·취소를 시작 화면에 알립니다."""
         if "LoadCancelled" in msg:
             self.start.show_error("읽기를 취소했습니다.")
         else:
             self.start.show_error(f"읽기 실패: {msg}")
 
     def _loaded(self, path, res):
+        """읽기가 끝나면 시작 화면에 결과를 보이고 최근 파일에 추가합니다."""
         info, df, code, kinds = res
         self.info, self.df, self.kinds, self.load_code = info, df, kinds, code
         spent = time.time() - self.load_started
@@ -113,6 +126,10 @@ class LoadingMixin:
 
     # ------------------------------------------------------------------ 분석 화면 시작
     def start_analysis(self):
+        """'분석 시작': 분석 엔진(Blueda)을 만들고 메인 화면을 채운 뒤 요약 통계를 고른 상태로 엽니다.
+
+        필터에 데이터를 먼저 넣고 열 목록을 채웁니다 (열 목록 신호가 필터 데이터를 쓰기 때문). 끝에 날짜 변환 제안과 이슈 점검을 시작합니다.
+        """
         if self.df is None:
             return
         self.bd = Blueda(self.df, config=self.cfg, data_path=self.info.path)

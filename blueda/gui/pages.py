@@ -18,6 +18,7 @@ class DropZone(QFrame):
     fileChosen = Signal(str)
 
     def __init__(self):
+        """파일을 끌어다 놓거나 클릭해서 고르는 상자. 파일을 받으면 fileChosen 신호로 경로를 보냅니다."""
         super().__init__()
         self.setObjectName("DropZone")
         self.setAcceptDrops(True)
@@ -40,24 +41,29 @@ class DropZone(QFrame):
         lay.addWidget(s)
 
     def _style(self, hover):
+        """끌어다 놓는 중(hover)이면 테두리를 강조합니다."""
         self.setStyleSheet(
             "QFrame#DropZone { background: #FFFFFF; border-radius: 8px; border: "
             + ("2px dashed #2F5D9E;" if hover else "1px dashed #B8C0CC;") + " }")
 
     def mousePressEvent(self, e):
+        """상자를 누르면 파일 선택 창을 엽니다."""
         path, _ = QFileDialog.getOpenFileName(self, "분석할 파일 선택", "", FILE_FILTER)
         if path:
             self.fileChosen.emit(path)
 
     def dragEnterEvent(self, e):
+        """파일을 끌고 들어오면 받을 수 있다고 표시합니다."""
         if e.mimeData().hasUrls():
             e.acceptProposedAction()
             self._style(True)
 
     def dragLeaveEvent(self, e):
+        """끌고 나가면 강조를 끕니다."""
         self._style(False)
 
     def dropEvent(self, e):
+        """놓은 파일의 경로(첫 번째)를 보냅니다."""
         self._style(False)
         urls = [u.toLocalFile() for u in e.mimeData().urls() if u.isLocalFile()]
         if urls:
@@ -65,11 +71,13 @@ class DropZone(QFrame):
 
 
 class StartPage(QScrollArea):
+    """시작 화면: 파일 놓기 상자, 판별 결과 표, 읽기 진행률·취소, 안내 문구, '분석 시작' 버튼, 최근 파일."""
     fileChosen = Signal(str)
     startRequested = Signal()
     cancelRequested = Signal()
 
     def __init__(self):
+        """시작 화면 부품을 만듭니다. status는 진행 문구, notice는 잠깐 보이는 안내(진행 문구에 덮이지 않음)."""
         super().__init__()
         self.setObjectName("PageScroll")
         self.setWidgetResizable(True)
@@ -155,6 +163,7 @@ class StartPage(QScrollArea):
         col.addStretch(1)
 
     def set_recent(self, paths):
+        """최근 연 파일 목록을 보여줍니다 (지금도 있는 파일만, 최대 8개)."""
         self.recent.clear()
         shown = [p for p in paths if os.path.exists(p)][:8]
         for p in shown:
@@ -165,6 +174,7 @@ class StartPage(QScrollArea):
         self.recent_box.setVisible(bool(shown))
 
     def show_detected(self, info):
+        """파일 판별 결과(형식·인코딩·크기)를 표에 채웁니다."""
         self.info.show()
         self.name.setText(os.path.basename(info.path))
         self.fields["형식"].setText(info.file_type.upper())
@@ -175,16 +185,19 @@ class StartPage(QScrollArea):
         self.progress.setValue(0)
 
     def set_loading(self, on, text=""):
+        """읽기 중 표시(진행 막대·취소 버튼)를 켜거나 끕니다."""
         self.progress.setVisible(on)
         self.cancel_btn.setVisible(on)
         self.status.setText(text)
         self.status.setProperty("role", "sub")
 
     def set_progress(self, p, text):
+        """진행률(0~1)과 문구를 갱신합니다."""
         self.progress.setValue(int(p * 1000))
         self.status.setText(text)
 
     def show_loaded(self, df, kinds, detail):
+        """읽기를 마치면 크기·변수 종류 수를 채우고 '분석 시작'을 켭니다."""
         from collections import Counter
         c = Counter(kinds.values())
         self.fields["크기"].setText(f"{len(df):,}행 × {df.shape[1]}열")
@@ -199,6 +212,7 @@ class StartPage(QScrollArea):
         self._notice_timer.start(ms)
 
     def show_error(self, text):
+        """읽지 못했을 때 이유를 주황 글씨로 보여주고 '분석 시작'을 끕니다."""
         self.info.show()
         self.set_loading(False, "")
         self.status.setText(f"<span style='color:#8A4B0F'>{text}</span>")
@@ -206,7 +220,9 @@ class StartPage(QScrollArea):
 
 
 class MainPage(QWidget):
+    """메인 분석 화면: 왼쪽(열 상자·분석 메뉴), 가운데(행 조건·분석 설정·결과 탭), 아래(결과 세션)."""
     def __init__(self):
+        """화면을 배치합니다. 가운데와 결과 세션 사이는 끌어서 높이를 바꿀 수 있습니다(QSplitter)."""
         super().__init__()
         self.setObjectName("Page")
         root = QHBoxLayout(self)

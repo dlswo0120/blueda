@@ -14,6 +14,11 @@ from .result import constant_message, FAIL, SUCCESS, AnalysisResult
 
 
 def multiple_regression(df, y, xs, alpha=0.05, standardize=False):
+    """다중회귀 (statsmodels OLS). 범주형 독립변수는 더미 변수(첫 범주 기준)로 바꿉니다.
+
+    지표: R², 수정 R², F 검정 p, 유의한 변수 / 표: 회귀계수(p값 '< 0.0001' 표기)·VIF(10 이상이면 다중공선성 의심)
+    standardize=True면 표준화 계수(단위가 다른 변수끼리 영향 크기 비교)를 구합니다.
+    """
     import statsmodels.api as sm
     from statsmodels.stats.outliers_influence import variance_inflation_factor
     code = f'''# [목적] 다중회귀: 독립변수 {', '.join(xs)} → 종속변수 {y}

@@ -49,7 +49,12 @@ def _plain(v):
 
 
 class HistoryStore:
+    """조회 히스토리 저장소 (history.jsonl, 한 줄에 기록 하나).
+
+    주요 속성: entries(메모리에 올린 최근 기록), mask(값 가림 여부), max_entries·max_days(보관 상한)
+    """
     def __init__(self, folder, max_entries=1000, max_days=90, mask=True):
+        """folder에 기록 파일과 salt 파일을 둡니다. 만들 때 오래된 기록을 정리하고 최근 기록만 올립니다."""
         os.makedirs(folder, exist_ok=True)
         self.path = os.path.join(folder, "history.jsonl")
         self.salt_path = os.path.join(folder, "history_salt")
@@ -80,11 +85,13 @@ class HistoryStore:
         self.entries = kept[-MEMORY_LIMIT:]
 
     def _trim(self, items):
+        """보관 기간(max_days)이 지난 기록을 빼고 최근 max_entries건만 남깁니다."""
         cutoff = (datetime.now() - timedelta(days=self.max_days)).isoformat(timespec="seconds")
         items = [e for e in items if e.get("t", "") >= cutoff]
         return items[-self.max_entries:]
 
     def _rewrite(self, items):
+        """정리한 기록으로 파일을 다시 씁니다. 임시 파일에 쓴 뒤 바꿔치기해서 중간에 꺼져도 깨지지 않게 합니다."""
         tmp = self.path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             for e in items:
@@ -92,6 +99,10 @@ class HistoryStore:
         os.replace(tmp, self.path)            # 중간에 꺼져도 기존 파일이 깨지지 않게
 
     def add(self, kind, text, rows=None, file=None, state=None):
+        """기록 한 줄을 파일 끝에 덧붙이고 메모리 목록에도 추가합니다.
+
+        kind: file/filter/analysis/dates/command/export, text: 보일 문구, rows: 남은 행 수, state: 되돌리기용 상태
+        """
         e = {"t": datetime.now().isoformat(timespec="seconds"), "kind": kind, "text": text}
         if rows is not None:
             e["rows"] = int(rows)
@@ -107,14 +118,17 @@ class HistoryStore:
         return e
 
     def clear(self):
+        """기록 파일과 메모리 목록을 모두 지웁니다 (salt는 남김)."""
         if os.path.exists(self.path):
             os.remove(self.path)
         self.entries = []
 
     def size_bytes(self):
+        """기록 파일 크기(바이트)."""
         return os.path.getsize(self.path) if os.path.exists(self.path) else 0
 
     def count(self):
+        """파일에 저장된 기록 수."""
         if not os.path.exists(self.path):
             return 0
         with open(self.path, encoding="utf-8") as f:
@@ -123,6 +137,7 @@ class HistoryStore:
     # ── 값 가림 ─────────────────────────────────────────────
     @property
     def salt(self):
+        """이 PC 전용 임의 문자열. 처음 쓸 때 만들고 파일에 저장합니다 (값 가림에 사용)."""
         if self._salt is None:
             if os.path.exists(self.salt_path):
                 with open(self.salt_path, encoding="utf-8") as f:
@@ -134,6 +149,7 @@ class HistoryStore:
         return self._salt
 
     def hide(self, value):
+        """값 → 가림 값 'h:' + SHA-256(salt + 값) 앞 16자리."""
         return "h:" + hashlib.sha256((self.salt + str(value)).encode("utf-8")).hexdigest()[:16]
 
     def filter_text(self, f):
@@ -143,6 +159,7 @@ class HistoryStore:
         return f.label()
 
     def pack_filters(self, filters):
+        """필터 목록을 JSON으로 저장할 수 있게 바꿉니다. 가림 모드면 고른 값(in 조건)을 가림 값으로."""
         out = []
         for f in filters:
             d = {k: _plain(v) for k, v in asdict(f).items()}
@@ -152,6 +169,7 @@ class HistoryStore:
         return out
 
     def pack_value(self, v):
+        """입력값 하나를 저장용으로 (가림 모드면 {'__h': 가림 값})."""
         return {"__h": self.hide(v)} if (self.mask and v is not None) else _plain(v)
 
     def state(self, filters, query, columns, method=None, params=None, value_params=()):
@@ -211,6 +229,7 @@ class HistoryStore:
 
 
 def same_file_name(entry, current):
+    """기록의 파일 이름이 지금 파일과 같은지 (기록에 파일 이름이 없으면 같다고 봄)."""
     return not entry.get("file") or entry.get("file") == current
 
 

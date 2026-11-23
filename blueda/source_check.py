@@ -22,6 +22,7 @@ KNOWN_LICENSES = {
 
 @dataclass
 class SourceInfo:
+    """데이터 출처 정보: 이름, 제공 기관, URL, 라이선스, 받은 날짜, 메모."""
     name: str                       # 데이터 이름
     provider: str = ""              # 제공 기관/사이트
     url: str = ""                   # 다운로드 주소

@@ -70,6 +70,7 @@ def setup_korean_font():
 
 
 def new_figure(width=6, height=4):
+    """BLUEDA 공통 스타일(한글 폰트, 위·오른쪽 테두리 없음)의 빈 그림과 축을 만듭니다. (fig, ax)를 돌려줍니다."""
     if not _font_ready:
         setup_korean_font()
     fig, ax = plt.subplots(figsize=(width, height), dpi=110)
@@ -147,6 +148,7 @@ def histogram(series, bins="auto", normal_curve=True):
 
 
 def boxplot(series, k=1.5):
+    """열 하나의 상자그림. 수염은 IQR×k (기본 1.5, Tukey 관례). 꼬리가 긴 분포면 축을 맞추고 제목에 표시합니다."""
     fig, ax = new_figure(width=4, height=4)
     v = sample(series.dropna())
     ax.boxplot(v, whis=k, patch_artist=True, flierprops=FLIER,
@@ -161,6 +163,7 @@ def boxplot(series, k=1.5):
 
 
 def bar_counts(counts, title):
+    """범주별 빈도 막대그래프 (기술통계 - 범주형에서 사용). counts는 value_counts() 결과입니다."""
     fig, ax = new_figure()
     counts.plot.bar(ax=ax, color=PRIMARY)
     ax.set_title(title)

@@ -14,6 +14,7 @@ from ..dialogs import ColumnChooser
 
 class DatesMixin:
     # ------------------------------------------------------------------ 날짜형 변환 (사용자 선택)
+    """날짜형 변환: 날짜처럼 보이는 글자 열을 알려주고, 사용자가 고른 열만 바꿉니다 (자동으로 바꾸지 않음)."""
     def offer_date_conversion(self, announce_none=False):
         """날짜 문자열 열이 있으면 바꿀 열을 고르는 창을 띄웁니다. 창은 화면을 막지 않습니다(open)."""
         if self.bd is None:
@@ -34,6 +35,12 @@ class DatesMixin:
         dlg.open()
 
     def _dates_chosen(self, dlg, code):
+        """날짜 창을 닫은 뒤 처리합니다.
+
+        - 분석이 도는 중이면 바꾸지 않음 (같은 데이터를 동시에 바꾸면 충돌)
+        - 이슈 점검이 도는 중이면 끝난 뒤 다시 시도
+        - 바꾼 뒤: 열 종류를 '날짜'로, 필터는 그대로 두고 데이터만 갱신(update_data), 이슈 다시 계산, 히스토리 기록
+        """
         chosen = dlg.chosen() if code == QDialog.Accepted else []
         if chosen:
             main, bg = self._running()

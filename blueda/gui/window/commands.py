@@ -26,7 +26,12 @@ HELP = [
 
 class CommandsMixin:
     # ------------------------------------------------------------------ 명령
+    """결과 세션 명령과 내보내기(Excel·CSV·로그). 보고서(4단계)는 아직 안내만 합니다."""
     def _command(self, text):
+        """명령을 처리합니다. 목록에 있는 명령은 히스토리에 남깁니다 (history 자체는 제외).
+
+        모르는 명령은 '5단계(명령어 해석)에서 지원' 안내를 남깁니다.
+        """
         t = text.strip()
         self.main.session.add("INFO", f"> {t}", datetime.now().strftime("%H:%M:%S"))
         low = t.lower()
@@ -58,12 +63,14 @@ class CommandsMixin:
 
     # ------------------------------------------------------------------ 내보내기
     def _need_results(self):
+        """내보낼 결과가 없으면 안내하고 False."""
         if not self.bd or not self.bd.results:
             self.log("FAIL", "내보낼 분석 결과가 없습니다. 먼저 분석을 실행하세요.")
             return False
         return True
 
     def export_excel(self):
+        """결과를 Excel 한 파일로 저장 (저장 위치는 창에서 고름)."""
         if not self._need_results():
             return
         path, _ = QFileDialog.getSaveFileName(self, "Excel로 저장", "BLUEDA_결과.xlsx", "Excel (*.xlsx)")
@@ -76,6 +83,7 @@ class CommandsMixin:
                 self.log("FAIL", f"Excel 저장 실패: {e}")
 
     def export_csv(self):
+        """결과 표를 CSV들로 저장 (폴더를 고름)."""
         if not self._need_results():
             return
         d = QFileDialog.getExistingDirectory(self, "CSV를 저장할 폴더")
@@ -85,6 +93,7 @@ class CommandsMixin:
             self.record("export", f"CSV {len(paths)}개 저장")
 
     def save_logs(self):
+        """분석 로그(.md·.py·.json)를 로그 폴더에 저장합니다."""
         if not self._need_results():
             return
         paths = self.bd.save()
@@ -92,5 +101,6 @@ class CommandsMixin:
         self.record("export", "분석 로그 저장")
 
     def report(self):
+        """보고서 버튼: 4단계(Word·PDF)에서 지원 예정이라 안내만 합니다."""
         self.log("UNSUPPORTED", "보고서(Word·PDF) 만들기는 4단계에서 지원합니다. 지금은 내보내기 → Excel을 쓰세요.")
 

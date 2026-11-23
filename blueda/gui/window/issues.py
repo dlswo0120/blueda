@@ -17,6 +17,10 @@ from ..widgets import Popup, Worker, button, label, repolish
 
 class IssuesMixin:
     # ------------------------------------------------------------------ [!] 파일 이슈
+    """[!] 이슈 버튼: 파일을 열거나 데이터·설정이 바뀌면 뒤에서 전처리 점검을 돌려 상단에 표시합니다.
+
+    _issue_gen(세대 번호)으로 늦게 도착한 이전 점검 결과를 버립니다 (다른 파일의 이슈가 표시되지 않게).
+    """
     def refresh_issues(self):
         """전처리 점검을 뒤에서 돌려 이슈 버튼을 갱신합니다 (화면이 멈추지 않게 별도 스레드)."""
         if self.df is None:
@@ -40,6 +44,7 @@ class IssuesMixin:
         self.issue_btn.hide()
 
     def _issues_ready(self, issues, gen=None):
+        """점검 결과를 받아 버튼 글자·색을 바꿉니다. 세대 번호가 다르거나 창이 지워졌으면 버립니다."""
         if gen is None or gen != self._issue_gen:
             return                                 # 더 새 점검이 시작됐으면 이전 결과는 버림
         if not shiboken_valid(self.issue_btn):
@@ -52,6 +57,7 @@ class IssuesMixin:
         repolish(self.issue_btn)
 
     def show_issues(self):
+        """버튼을 누르면 이슈 목록 팝업(최대 ISSUE_POPUP_MAX줄)과 바로 가기 버튼을 보여줍니다."""
         issues = getattr(self, "issues", [])
         pop = Popup(460, self)
         n_need = sum(i.level == NEED for i in issues)
@@ -82,6 +88,7 @@ class IssuesMixin:
         pop.show_below(self.issue_btn)
 
     def _issue_action(self, action):
+        """바로 가기: 'dates'면 날짜 변환 창, 아니면 전처리 점검을 실행해 결과를 보여줍니다."""
         if action == "dates":
             self.offer_date_conversion(announce_none=True)
         else:

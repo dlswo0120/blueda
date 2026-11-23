@@ -16,6 +16,7 @@ from .result import constant_message, FAIL, SUCCESS, AnalysisResult
 
 
 def _numeric_series(df, column):
+    """열을 숫자로 바꾸고 결측을 뺀 Series를 돌려줍니다 (숫자로 못 바꾼 값도 결측 처리)."""
     if column not in df.columns:
         raise KeyError(f"데이터에 없는 열: {column}")
     s = pd.to_numeric(df[column], errors="coerce").dropna()
@@ -23,6 +24,10 @@ def _numeric_series(df, column):
 
 
 def sampling_distribution(df, column, sample_size=30, n_samples=1000, seed=42):
+    """표본분포 실험. 표본평균들의 평균이 모평균에, 표준편차가 σ/√n에 가까운지 비교합니다 (중심극한정리).
+
+    seed를 고정해 같은 결과를 다시 얻을 수 있습니다.
+    """
     code = f'''# [목적] 표본분포 시뮬레이션: 크기 {sample_size}인 표본을 {n_samples}번 뽑아 표본평균의 분포 보기
 rng = np.random.default_rng({seed})                       # 재현성을 위한 시드 고정
 pop = sub[{column!r}].dropna().to_numpy()                 # 지금 데이터를 '모집단'으로 간주
@@ -52,6 +57,7 @@ print(pop.std(ddof=0) / np.sqrt({sample_size}))            # 이론적 표준오
 
 
 def confidence_interval_mean(df, column, level=0.95):
+    """평균의 신뢰구간 (t분포). 하한·상한 = 평균 ± t × 표준오차, 표준오차 = s/√n."""
     code = f'''# [목적] 모평균의 {int(level*100)}% 신뢰구간 (t분포 사용)
 x = sub[{column!r}].dropna()
 n, mean = len(x), x.mean()
@@ -77,6 +83,7 @@ print(mean - t_crit * se, mean + t_crit * se)             # 신뢰구간 = 평�
 
 
 def confidence_interval_proportion(df, column, category, level=0.95):
+    """비율의 신뢰구간 (Wilson 방법). 표본이 작거나 비율이 0·1에 가까워도 정확한 편입니다."""
     from statsmodels.stats.proportion import proportion_confint
     code = f'''# [목적] '{category}' 비율의 {int(level*100)}% 신뢰구간 (Wilson 방법)
 from statsmodels.stats.proportion import proportion_confint
@@ -100,6 +107,7 @@ print(count / n, proportion_confint(count, n, alpha=1 - {level}, method="wilson"
 
 
 def one_sample_ttest(df, column, mu0, alpha=0.05, alternative="two-sided"):
+    """단일표본 t검정: 평균이 mu0과 다른지. 효과 크기 Cohen's d = (평균 − mu0) / s."""
     sign = {"two-sided": "≠", "greater": ">", "less": "<"}[alternative]
     code = f'''# [목적] 단일표본 t검정: 모평균이 {mu0}인지 검정
 # 귀무가설 H0: μ = {mu0} / 대립가설 H1: μ {sign} {mu0}

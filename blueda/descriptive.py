@@ -43,6 +43,7 @@ def _split_numeric(df, var_types=None):
 
 
 def _id_note(skipped):
+    """기술통계에서 자동으로 뺀 ID 열이 있으면 안내 문장을, 없으면 None을 돌려줍니다."""
     if not skipped:
         return None
     return (f"ID 후보로 판단해 뺀 열: {', '.join(map(str, skipped))} (모든 값이 다른 연속 번호 또는 ID 이름 → 평균이 의미 없음). "
@@ -89,6 +90,11 @@ print(sub[flag.any(axis=1)])                  # 이상값 후보가 있는 행''
 
 
 def describe_numeric(df, with_charts=True, iqr_k=1.5, var_types=None):
+    """수치형 열 요약: 개수·평균·표준편차·사분위수·왜도·첨도·결측·이상값 후보 수, 열마다 히스토그램·상자그림.
+
+    인자: with_charts 차트 여부, iqr_k 이상값 경계 배수, var_types 사용자가 지정한 변수 종류
+    ID 열(연속 번호·ID 이름)은 자동으로 빼고 안내합니다.
+    """
     cols, skipped = _split_numeric(df, var_types)
     code = ('# [목적] 수치형 열의 분포 요약\n'
             + (f'# ID 후보 열 {skipped!r}은(는) 평균이 의미 없어 제외\n' if skipped else '')
@@ -135,6 +141,10 @@ print(summary)'''
 
 
 def describe_categorical(df, with_charts=True, top_n=20, max_unique=50, var_types=None):
+    """범주형 열 요약: 범주 수·최빈값·결측, 열마다 빈도표와 빈도 막대.
+
+    값 종류가 max_unique보다 많은 열은 범주로 보기 어려워 뺍니다. 막대는 상위 top_n개만 그립니다.
+    """
     cols = _categorical_cols(df, max_unique, var_types)
     code = f'''# [목적] 범주형 열의 빈도·비율·최빈값
 for col in sub.select_dtypes(include=["object", "string", "category", "bool"]):

@@ -15,7 +15,9 @@ from ...history import describe_entry, same_file_name
 
 class HistoryMixin:
     # ------------------------------------------------------------------ 조회 히스토리
+    """조회 히스토리: 확정한 동작을 기록하고(record), 히스토리 탭을 갱신하고, 기록을 눌러 되돌립니다."""
     def _file_name(self):
+        """지금 연 파일 이름 (경로 없이). 다른 파일의 기록인지 비교할 때 씁니다."""
         return os.path.basename(self.info.path) if self.info else None
 
     def record(self, kind, text, rows=None, state=None):
@@ -30,6 +32,7 @@ class HistoryMixin:
         self.refresh_history_panel()
 
     def _state(self, method=None, params=None):
+        """되돌리기에 필요한 상태(필터·직접 입력 조건·고른 열·분석·입력값)를 만듭니다. 값 가림은 HistoryStore가 합니다."""
         value_params = ()
         if method in M.BY_KEY:
             value_params = tuple(p.name for p in M.BY_KEY[method].params if p.kind == M.VALUE)
@@ -37,6 +40,7 @@ class HistoryMixin:
         return self.history.state(f.filters, f.query, self.main.columns.selected(), method, params, value_params)
 
     def refresh_history_panel(self):
+        """히스토리 탭 목록과 '건수 · 용량 · 값 가림' 표시를 갱신합니다."""
         rows = [(i, *describe_entry(e)) for i, e in enumerate(self.history.entries)]
         size = self.history.size_bytes()
         info = f"{len(rows)}건 · {size / 1024:,.0f}KB" if rows else ""
@@ -81,6 +85,7 @@ class HistoryMixin:
             self.log("INFO", "  직접 입력 조건은 값 가림 모드라 저장하지 않아 되돌리지 않았습니다.")
 
     def clear_history(self):
+        """확인 창을 띄운 뒤 히스토리를 모두 지웁니다."""
         if QMessageBox.question(self, "히스토리 삭제", "조회 히스토리를 모두 지울까요? 되돌릴 수 없습니다.") \
                 != QMessageBox.Yes:
             return
@@ -89,6 +94,7 @@ class HistoryMixin:
         self.log("INFO", "조회 히스토리를 모두 지웠습니다.")
 
     def _filters_changed(self):
+        """필터가 바뀌면 남는 행 수를 다시 세고, 조건 문구(값은 가림)와 함께 기록합니다."""
         self._scope_changed()
         if self.df is None:
             return
