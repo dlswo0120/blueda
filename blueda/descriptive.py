@@ -22,10 +22,31 @@ ESTIMATOR_NOTE = (
 
 
 def _numeric_cols(df, var_types=None):
-    """수치형 열. 사용자가 범주형·ID로 지정한 숫자 열은 뺍니다."""
+    """수치형 열. 사용자가 범주형·ID로 지정한 숫자 열은 뺍니다.
+    지정이 없으면 ID 후보(행 번호·일련번호)도 뺍니다. 평균·표준편차가 의미 없는 값이기 때문입니다.
+    사용자가 '수치형'으로 지정하면 다시 포함됩니다."""
+    return _split_numeric(df, var_types)[0]
+
+
+def _split_numeric(df, var_types=None):
+    """(분석할 수치형 열, 자동으로 뺀 ID 후보 열)"""
+    from .variables import is_strong_id
     var_types = var_types or {}
-    cols = df.select_dtypes(include="number").columns.tolist()
-    return [c for c in cols if var_types.get(c, "수치형") == "수치형"]
+    use, skipped = [], []
+    for c in df.select_dtypes(include="number").columns:
+        kind = var_types.get(c)
+        if kind is None and is_strong_id(df[c], c):
+            skipped.append(c)
+        elif (kind or "수치형") == "수치형":
+            use.append(c)
+    return use, skipped
+
+
+def _id_note(skipped):
+    if not skipped:
+        return None
+    return (f"ID 후보로 판단해 뺀 열: {', '.join(map(str, skipped))} (모든 값이 다른 연속 번호 또는 ID 이름 → 평균이 의미 없음). "
+            "실제 측정값이면 열 이름을 오른쪽 클릭해 '수치형'으로 바꾸세요.")
 
 
 def _categorical_cols(df, max_unique=50, var_types=None):
@@ -68,10 +89,10 @@ print(sub[flag.any(axis=1)])                  # 이상값 후보가 있는 행''
 
 
 def describe_numeric(df, with_charts=True, iqr_k=1.5, var_types=None):
-    cols = _numeric_cols(df, var_types)
-    code = '''# [목적] 수치형 열의 분포 요약
-num = sub.select_dtypes(include="number")
-summary = pd.DataFrame({
+    cols, skipped = _split_numeric(df, var_types)
+    code = ('# [목적] 수치형 열의 분포 요약\n'
+            + (f'# ID 후보 열 {skipped!r}은(는) 평균이 의미 없어 제외\n' if skipped else '')
+            + f'num = sub[{cols!r}]\n') + '''summary = pd.DataFrame({
     "개수": num.count(),               # 결측 제외 개수
     "평균": num.mean(),
     "중앙값": num.median(),
@@ -99,6 +120,8 @@ print(summary)'''
             figures[f"{c} 히스토그램"] = charts.histogram(df[c])
             figures[f"{c} 박스플롯"] = charts.boxplot(df[c], iqr_k)
     notes = [ESTIMATOR_NOTE]
+    if _id_note(skipped):
+        notes.append(_id_note(skipped))
     if with_charts and charts.sample_note(len(df)):
         notes.append(charts.sample_note(len(df)))
     small = summary.index[summary["개수"] < 4].tolist()

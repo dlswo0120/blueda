@@ -114,7 +114,7 @@ print(dup_count)'''
 
 def _outlier_columns(df):
     """IQR 판단이 의미 있는 숫자 열과, 뺀 열(이유 포함)을 나눕니다."""
-    from .variables import ID, infer_kind
+    from .variables import is_strong_id
     use, skipped = [], {}
     for c in df.select_dtypes(include="number").columns:
         s = df[c]
@@ -125,7 +125,7 @@ def _outlier_columns(df):
             skipped[c] = "값 2종 이하(0/1 등)"
         elif nunique <= DISCRETE_MAX_UNIQUE:
             skipped[c] = f"값 {nunique}종뿐인 이산값"
-        elif infer_kind(s)[0] == ID:
+        elif is_strong_id(s, c):
             skipped[c] = "ID 후보"
         else:
             use.append(c)

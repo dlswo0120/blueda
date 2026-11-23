@@ -14,6 +14,31 @@ from .result import FAIL, SUCCESS, AnalysisResult
 NUMERIC, CATEGORICAL, DATETIME, ID, TEXT = "수치형", "범주형", "날짜", "ID 후보", "텍스트"
 KINDS = (NUMERIC, CATEGORICAL, DATETIME, ID, TEXT)
 
+import re as _re
+
+_ID_NAME_PARTS = ("번호", "아이디", "코드", "식별")
+_ID_NAME_WORDS = ("id", "uid", "udi", "no", "idx", "index", "key", "seq")
+
+
+def is_strong_id(s, name=""):
+    """분석에서 자동으로 뺄 만큼 확실한 ID 숫자 열인지 판단합니다.
+
+    '모든 값이 다른 정수'만으로는 부족합니다 (원 단위 매출도 모두 다를 수 있음).
+    정수 자료형이고 모든 값이 다르며, 다음 중 하나일 때만 ID로 봅니다.
+      - 1, 2, 3…처럼 연속된 번호 (최댓값 − 최솟값 + 1 = 개수)
+      - 열 이름에 ID·번호 단서가 있음 (예: Row ID, UDI, 고객번호)
+    """
+    if not pd.api.types.is_integer_dtype(s) or pd.api.types.is_bool_dtype(s):
+        return False
+    v = s.dropna()
+    if len(v) < 10 or v.nunique() != len(v):
+        return False
+    if int(v.max()) - int(v.min()) + 1 == len(v):
+        return True
+    low = str(name).lower()
+    words = [w for w in _re.split(r"[^0-9a-z가-힣]+", low) if w]
+    return any(p in low for p in _ID_NAME_PARTS) or any(w in _ID_NAME_WORDS for w in words)
+
 
 def infer_kind(s, max_categories=10, text_unique_ratio=0.5):
     """열 하나의 종류와 판정 이유를 돌려줍니다."""

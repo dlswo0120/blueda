@@ -208,9 +208,16 @@ def test_checks_still_work_after_dtype_optimization(store):
     assert "Region" in t.loc["5. 범주 불일치", "내용"]       # 표기 오류 감지
 
 
-@pytest.mark.xfail(strict=True, reason="기술통계에 ID 후보 열(UDI, Row ID)이 포함됨 (수정 예정)")
 @pytest.mark.parametrize("fx,idcol", [("ai4i", "UDI"), ("store", "Row ID")])
-def test_known_describe_skips_id(fx, idcol, request):
+def test_describe_skips_id(fx, idcol, request):
+    """기술통계에서 ID 후보 열은 빠지고 안내 문구가 나온다 (v0.4.1 수정)"""
     bd, raw = request.getfixturevalue(fx)
     res = _quiet(bd.describe)
     assert idcol not in res[0].tables["수치형 요약"].index
+    assert any(idcol in n for n in res[0].notes)
+    # 사용자가 수치형으로 지정하면 다시 포함
+    bd.var_types[idcol] = "수치형"
+    try:
+        assert idcol in _quiet(bd.describe)[0].tables["수치형 요약"].index
+    finally:
+        bd.var_types.pop(idcol)

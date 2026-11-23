@@ -79,3 +79,23 @@ def test_unit_check_ignores_rare_number_prefix():
     assert t.loc["6. 단위", "상태"] == "문제 없음"
     t2 = check_result(pd.DataFrame({"w": ["10kg", "3kg", "5 kg", "7g"] * 5})).tables["전처리 점검"]
     assert t2.loc["6. 단위", "상태"] == "확인 필요"
+
+
+def test_strong_id_rule():
+    from blueda.variables import is_strong_id
+    n = 50
+    assert is_strong_id(pd.Series(range(1, n + 1)), "UDI")                 # 연속 번호
+    assert is_strong_id(pd.Series(range(1001, 1001 + n)), "x")              # 이름 없어도 연속이면 ID
+    assert is_strong_id(pd.Series(np.arange(n) * 7 + 3), "고객번호")         # 비연속이지만 이름 단서
+    assert not is_strong_id(pd.Series(np.arange(n) * 7 + 3), "매출")         # 모두 다른 정수 측정값은 유지
+    assert not is_strong_id(pd.Series(np.arange(n) * 7 + 3), "paid")
+    assert not is_strong_id(pd.Series(np.arange(float(n))), "값")            # 실수 열은 ID로 보지 않음
+
+
+def test_describe_drops_id_and_notes_it():
+    from blueda.descriptive import describe_numeric
+    r = describe_numeric(_df(), with_charts=False)
+    idx = r.tables["수치형 요약"].index
+    assert "id" not in idx and "speed" in idx and "fail" in idx        # 0/1 평균은 비율이라 유지
+    assert any("id" in n and "수치형" in n for n in r.notes)
+    assert "'id'" in r.code                                            # 코드 로그에도 제외 사실 기록
