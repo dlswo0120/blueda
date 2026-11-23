@@ -2,7 +2,7 @@
 
 import os
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QFileDialog, QFrame, QGridLayout, QHBoxLayout, QListWidget, QListWidgetItem, QProgressBar,
     QScrollArea, QSplitter, QVBoxLayout, QWidget,
@@ -124,6 +124,12 @@ class StartPage(QScrollArea):
         il.addLayout(prog)
         self.status = label("", "sub", True)
         il.addWidget(self.status)
+        self.notice = label("", "warn", True)      # 잠깐 보여주는 안내 (진행 문구에 덮이지 않게 따로 둠)
+        self.notice.hide()
+        il.addWidget(self.notice)
+        self._notice_timer = QTimer(self)
+        self._notice_timer.setSingleShot(True)
+        self._notice_timer.timeout.connect(self.notice.hide)
         foot = QHBoxLayout()
         foot.addStretch(1)
         self.start_btn = button("분석 시작", "primary")
@@ -185,6 +191,12 @@ class StartPage(QScrollArea):
         self.fields["변수"].setText(" · ".join(f"{k.replace(' 후보', '')} {n}" for k, n in c.items()))
         self.set_loading(False, detail)
         self.start_btn.setEnabled(True)
+
+    def flash(self, text, ms=5000):
+        """진행 문구는 그대로 두고, 그 아래에 안내를 잠깐 보여줍니다."""
+        self.notice.setText(text)
+        self.notice.show()
+        self._notice_timer.start(ms)
 
     def show_error(self, text):
         self.info.show()

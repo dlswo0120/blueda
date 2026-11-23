@@ -235,3 +235,64 @@ def test_history_records_and_restores(qtbot, win):
     assert len(win.history.entries) == n_before                  # 되돌리기 자체는 기록하지 않음
     win.main.session.show_page(1)
     assert win.main.session.history.count() == len(win.history.entries)
+
+
+# ── 작업 중 파일 열기·창 닫기 (v0.5.1) ─────────────────────
+def _slow_worker(seconds):
+    import time as _t
+    from blueda.gui.widgets import Worker
+    w = Worker(lambda: _t.sleep(seconds))
+    w.start()
+    return w
+
+
+def test_stale_issue_result_is_dropped(qtbot, win):
+    """이전 파일의 이슈 점검이 늦게 끝나도 새 파일에 표시되지 않는다"""
+    old_gen = win._issue_gen
+    win._invalidate_issues()                       # 새 파일을 연 것과 같은 상태
+    from blueda.issues import Issue
+    win._issues_ready([Issue("확인 필요", "1. 타입", "옛 파일 이슈")], old_gen)
+    assert win.issues == [] and not win.issue_btn.isVisible()
+
+
+def test_open_during_work_shows_notice_on_start_page(qtbot, win, csv_path):
+    win.stack.setCurrentWidget(win.start)
+    win.worker = _slow_worker(0.5)
+    win.open_file(csv_path)
+    assert win.start.notice.isVisible() and "끝난 뒤" in win.start.notice.text()
+    qtbot.waitUntil(lambda: not win.worker.isRunning(), timeout=5000)
+
+
+def test_close_during_analysis_waits_without_freezing(qtbot, win, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    def press_later(box):
+        next(b for b in box.buttons() if b.text() == "끝나면 닫기").click()
+    monkeypatch.setattr(QMessageBox, "exec", press_later)
+    win.worker = _slow_worker(1.0)
+    import time as _t
+    t = _t.time()
+    win.close()
+    assert _t.time() - t < 0.5 and not win.isVisible()   # 바로 반응, 멈추지 않음
+    qtbot.waitUntil(lambda: not win.worker.isRunning() and not win._close_pending, timeout=5000)
+
+
+def test_close_during_analysis_keep_working(qtbot, win, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    def press_keep(box):
+        next(b for b in box.buttons() if b.text() == "계속 작업").click()
+    monkeypatch.setattr(QMessageBox, "exec", press_keep)
+    win.worker = _slow_worker(0.5)
+    win.close()
+    assert win.isVisible()
+    qtbot.waitUntil(lambda: not win.worker.isRunning(), timeout=5000)
+
+
+def test_new_file_closes_old_date_dialog(qtbot, win, csv_path):
+    win.offer_date_conversion()
+    dlg = win.date_dialog
+    assert dlg is not None and dlg.isVisible()
+    win.open_file(csv_path)
+    assert not dlg.isVisible() and win.date_dialog is None
+    qtbot.waitUntil(lambda: win.df is not None and win.start.start_btn.isEnabled(), timeout=30000)

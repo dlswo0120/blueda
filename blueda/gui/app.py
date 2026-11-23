@@ -5,7 +5,8 @@ import sys
 import time
 from datetime import datetime
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
+from shiboken6 import isValid as shiboken_valid
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout, QLineEdit,
@@ -239,13 +240,48 @@ class MainWindow(QMainWindow):
         self.apply_theme()
         self.refresh_history_panel()
 
+    def _running(self):
+        main = self.worker if (self.worker is not None and self.worker.isRunning()) else None
+        bg = [w for w in getattr(self, "_bg_workers", []) if w.isRunning()]
+        return main, bg
+
     def closeEvent(self, event):
-        """창을 닫을 때 뒤에서 도는 작업을 멈추고 끝날 때까지 기다립니다 (강제 종료 방지)."""
-        for w in [self.worker] + list(getattr(self, "_bg_workers", [])):
-            if w is not None and w.isRunning():
-                w.cancel()
-                w.wait(5000)
-        super().closeEvent(event)
+        """작업 중에 창을 닫아도 멈추거나 강제 종료되지 않게 합니다.
+        - 읽기: 취소하고 닫음 (읽기는 중간에 멈출 수 있음)
+        - 분석: 중간에 멈출 수 없으므로 [끝나면 닫기] / [계속 작업]을 묻고, 끝나면 닫음
+        - 이슈 점검만: 묻지 않고 창을 숨긴 뒤, 끝나는 대로(몇 초) 닫음
+        """
+        main, bg = self._running()
+        if main is None and not bg:
+            super().closeEvent(event)
+            return
+        event.ignore()                                  # 지금 바로 닫지 않음 (스레드가 끝난 뒤 닫음)
+        if main is not None and getattr(self, "_loading", False):
+            main.cancel()                               # 읽기는 취소 가능
+        elif main is not None and not getattr(self, "_close_pending", False):
+            box = QMessageBox(self)
+            box.setWindowTitle("분석 진행 중")
+            box.setText("분석이 아직 진행 중입니다. 중간에 멈출 수 없어 끝난 뒤에 닫을 수 있습니다.")
+            later = box.addButton("끝나면 닫기", QMessageBox.AcceptRole)
+            box.addButton("계속 작업", QMessageBox.RejectRole)
+            box.exec()
+            if box.clickedButton() is not later:
+                return
+        self._close_pending = True
+        self.hide()                                     # 사용자에게는 바로 닫힌 것처럼
+        for w in ([main] if main is not None else []) + bg:
+            w.finished.connect(self._close_when_idle)
+        self._close_when_idle()
+
+    def _close_when_idle(self):
+        if not getattr(self, "_close_pending", False):
+            return
+        main, bg = self._running()
+        if main is None and not bg:
+            self._close_pending = False
+            self.close()
+        else:                                           # 끝남 신호 직후에도 잠깐 실행 중으로 보일 수 있어 다시 확인
+            QTimer.singleShot(100, self._close_when_idle)
 
     # ------------------------------------------------------------------ 조회 히스토리
     def _file_name(self):
@@ -420,8 +456,19 @@ class MainWindow(QMainWindow):
     def open_file(self, path):
         if self.worker is not None and self.worker.isRunning():
             # 읽기·분석 스레드가 도는 중에 새 작업을 시작하면 실행 중인 스레드를 잃어 강제 종료될 수 있음
-            self.log("INFO", "진행 중인 작업이 끝난 뒤에 다른 파일을 열어 주세요.")
+            msg = "진행 중인 작업이 끝난 뒤에 다른 파일을 열어 주세요."
+            self.log("INFO", msg)
+            if self.stack.currentWidget() is self.start:      # 시작 화면에서는 결과 세션이 안 보이므로
+                self.start.flash(msg)
             return
+        self._invalidate_issues()                              # 이전 파일의 이슈 점검 결과는 버림
+        for name in ("date_dialog", "issue_popup"):            # 이전 파일에 대해 띄운 창은 닫음
+            dlg = getattr(self, name, None)
+            if dlg is not None and dlg.isVisible():
+                if name == "date_dialog":
+                    dlg.finished.disconnect()                  # 닫으면서 '건너뜀'이 기록되지 않게
+                dlg.close()
+            setattr(self, name, None)
         try:
             info = detect_file(path)
         except OSError as e:
@@ -464,6 +511,8 @@ class MainWindow(QMainWindow):
             kinds = M.column_kinds(df, max_categories=self.cfg.category_max_unique)
             return info2, df, code, kinds
         w._fn = job
+        self._loading = True
+        w.finished.connect(lambda: setattr(self, "_loading", False))
         self.load_started = time.time()
         w.progress.connect(self._load_progress)
         w.done.connect(lambda res: self._loaded(path, res))
@@ -535,9 +584,17 @@ class MainWindow(QMainWindow):
         self.issue_worker = w
         w.start()
 
+    def _invalidate_issues(self):
+        """새 파일을 열면 이슈 버튼을 지우고, 아직 도는 이전 파일 점검의 결과는 도착해도 버리게 합니다."""
+        self._issue_gen = getattr(self, "_issue_gen", 0) + 1
+        self.issues = []
+        self.issue_btn.hide()
+
     def _issues_ready(self, issues, gen=None):
-        if gen is not None and gen != self._issue_gen:
+        if gen is None or gen != self._issue_gen:
             return                                 # 더 새 점검이 시작됐으면 이전 결과는 버림
+        if not shiboken_valid(self.issue_btn):
+            return                                 # 창이 이미 지워진 뒤 도착한 결과
         self.issues = issues
         text, level = summary(issues)
         self.issue_btn.setVisible(bool(text))
