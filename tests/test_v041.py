@@ -99,3 +99,50 @@ def test_describe_drops_id_and_notes_it():
     assert "id" not in idx and "speed" in idx and "fail" in idx        # 0/1 평균은 비율이라 유지
     assert any("id" in n and "수치형" in n for n in r.notes)
     assert "'id'" in r.code                                            # 코드 로그에도 제외 사실 기록
+
+
+# ── 날짜형 변환 ─────────────────────────────────────────────
+def test_date_candidates_and_convert_object_and_category():
+    from blueda import Blueda
+    from blueda.config import BluedaConfig
+    df = _df(500)
+    df["order"] = df["date"]
+    df, _ = optimize_dtypes(df)                         # date·order는 category가 됨
+    df["date"] = df["date"].astype(object)              # 하나는 일반 문자열로
+    bd = Blueda(df, BluedaConfig(print_code=False))
+    assert set(bd.date_candidates()) == {"date", "order"}
+    r = bd.convert_dates(["order"])                     # 사용자가 고른 열만
+    assert r.status == "SUCCESS"
+    assert pd.api.types.is_datetime64_any_dtype(bd.df["order"])
+    assert not pd.api.types.is_datetime64_any_dtype(bd.df["date"])   # 고르지 않은 열은 그대로
+    exp = pd.to_datetime(_df(500)["date"])                           # 실습 방식과 같은 값
+    assert (bd.df["order"].reset_index(drop=True) == exp).all()
+    assert "pd.to_datetime(df['order']" in r.code
+    bd.convert_dates(["date"])
+    assert (bd.df["date"] == bd.df["order"]).all()
+
+
+def test_convert_dates_reports_bad_values_and_keeps_na():
+    from blueda.dates import convert_dates
+    df = pd.DataFrame({"d": ["2024-01-01", "2024-02-30", None, "2024-03-05"] * 5})
+    r = convert_dates(df, ["d"])
+    assert r.metrics["날짜로 못 읽은 값"] == 5          # 2월 30일은 없는 날짜
+    assert int(df["d"].isna().sum()) == 10              # 원래 결측 5 + 못 읽은 값 5
+    assert any("NaT" in n for n in r.notes)
+
+
+def test_convert_dates_mixed_formats():
+    from blueda.dates import convert_dates
+    df = pd.DataFrame({"d": ["2024-01-05", "2024/01/06", "Jan 7, 2024"] * 4})
+    r = convert_dates(df, ["d"])
+    assert r.metrics["날짜로 못 읽은 값"] == 0
+    assert df["d"].dt.day.tolist()[:3] == [5, 6, 7]
+
+
+def test_ratio_same_with_or_without_optimization():
+    """메모리 최적화 여부와 상관없이 같은 비율(행 기준)이 나와야 한다"""
+    codes = ["77095"] * 90 + ["M7A", "K1A"] * 5
+    df = pd.DataFrame({"Postal Code": codes, "x": range(100)})
+    a = check_result(df).tables["전처리 점검"].loc["1. 타입", "내용"]
+    b = check_result(optimize_dtypes(df.copy())[0]).tables["전처리 점검"].loc["1. 타입", "내용"]
+    assert "90%" in a and a == b

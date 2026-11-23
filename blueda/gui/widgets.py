@@ -943,19 +943,46 @@ def table_view(df, show_index=True):
     v.resizeColumnsToContents()
     for i in range(model.columnCount()):
         v.setColumnWidth(i, min(max(v.columnWidth(i), 70), 360))
+    if _has_long_text(df):
+        # 긴 문장(전처리 점검 '내용' 등)은 잘리지 않게 줄바꿈하고, 마지막 열을 오른쪽 끝까지 늘림
+        v.setWordWrap(True)
+        v.setTextElideMode(Qt.ElideNone)
+        v.horizontalHeader().setStretchLastSection(True)
+        v.resizeRowsToContents()
+        v.horizontalHeader().sectionResized.connect(lambda *_: _rewrap(v))
     return v, model
+
+
+def _rewrap(v):
+    """열 너비가 바뀌면 줄바꿈 높이를 다시 계산하고, 높이를 맞춰둔 표면 높이도 다시 맞춤"""
+    v.resizeRowsToContents()
+    if v.property("fit_rows"):
+        fit_table_height(v, v.property("fit_rows"))
+
+
+def _has_long_text(df, limit=60):
+    """문자열 칸 중 줄바꿈이 있거나 limit자보다 긴 값이 있는지 (앞 200행만 확인)"""
+    head = df.head(200)
+    for c in head.columns:
+        if head[c].dtype == object or pd.api.types.is_string_dtype(head[c]):
+            s = head[c].dropna().astype(str)
+            if len(s) and (s.str.contains("\n").any() or (s.str.len() > limit).any()):
+                return True
+    return False
 
 
 def fit_table_height(view, max_rows=12):
     """행이 max_rows 이하면 스크롤바 없이 표 전체가 보이는 높이로 맞춤."""
     rows = view.model().rowCount()
     shown = min(rows, max_rows)
-    h = view.horizontalHeader().sizeHint().height() + view.verticalHeader().defaultSectionSize() * max(shown, 1)
+    rows_h = sum(view.rowHeight(i) for i in range(shown)) or view.verticalHeader().defaultSectionSize()
+    h = view.horizontalHeader().sizeHint().height() + rows_h    # 줄바꿈으로 높아진 행도 반영
     h += 2 * view.frameWidth() + 2
     if view.horizontalScrollBar().isVisible() or sum(view.columnWidth(i) for i in range(view.model().columnCount())) > 900:
         h += view.horizontalScrollBar().sizeHint().height()
     if rows <= max_rows:
         view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+    view.setProperty("fit_rows", max_rows)
     view.setFixedHeight(h)
 
 

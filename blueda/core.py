@@ -125,6 +125,20 @@ print(df.head())                                    # 앞 5행 미리보기'''
         from .interpret import josa
         print(f"[BLUEDA] '{column}' → {josa(kind, '으로/로')} 지정")
 
+    # ---------- 날짜형 변환 (사용자가 고른 열만) ----------
+    def date_candidates(self):
+        """날짜 문자열로 보이는 열 목록. 바꿀지는 사용자가 정합니다."""
+        from .dates import date_candidates
+        return date_candidates(self.df)
+
+    def convert_dates(self, columns):
+        """고른 열을 pd.to_datetime으로 바꿉니다. 원본 데이터(self.df)를 바꾸고 로그에 코드를 남깁니다."""
+        from .dates import convert_dates
+        try:
+            return self._record(convert_dates(self.df, list(columns)))
+        except Exception as e:
+            return self._record(AnalysisResult("날짜형 변환", FAIL, f"{type(e).__name__}: {e}"))
+
     def analysis_unit(self, key_columns, unit_name=""):
         """한 행이 무엇인지(예: 고객 1명) 정하고, 기준 열에 중복이 없는지 확인합니다."""
         if isinstance(key_columns, str):

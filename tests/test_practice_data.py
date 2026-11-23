@@ -221,3 +221,21 @@ def test_describe_skips_id(fx, idcol, request):
         assert idcol in _quiet(bd.describe)[0].tables["수치형 요약"].index
     finally:
         bd.var_types.pop(idcol)
+
+
+def test_convert_dates_then_monthly_matches_practice():
+    """실습 흐름: pd.to_datetime → 월별 매출 집계. BLUEDA 변환 후 같은 값이 나와야 한다."""
+    p = _path("superstore.csv")
+    bd = _quiet(Blueda.from_file, str(p))                   # 다른 테스트와 섞이지 않게 새로 읽음
+    raw = pd.read_csv(p)
+    assert {"Order Date", "Ship Date"} <= set(bd.date_candidates())
+    r = _quiet(bd.convert_dates, ["Order Date", "Ship Date"])
+    assert r.metrics["날짜로 못 읽은 값"] == 0
+    raw["Order Date"] = pd.to_datetime(raw["Order Date"])  # 실습에서 하는 방식
+    exp = raw.groupby(raw["Order Date"].dt.to_period("M"))["Sales"].sum()
+    got = bd.df.groupby(bd.df["Order Date"].dt.to_period("M"))["Sales"].sum()
+    pd.testing.assert_series_equal(got, exp)
+    # 변환 후에도 기간 필터가 같은 행 수를 고른다
+    from blueda.scope import Filter
+    mask, _ = Filter("Order Date", "between", lo="2025-01-01", hi="2025-12-31").mask_and_code(bd.df)
+    assert int(mask.sum()) == int(raw["Order Date"].between("2025-01-01", "2025-12-31").sum())

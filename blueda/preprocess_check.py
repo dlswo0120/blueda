@@ -63,6 +63,20 @@ def _digit_length_note(full):
     return ""
 
 
+def _row_weights(col):
+    """_text_values와 같은 순서로, 각 값이 몇 행에 나오는지. 일반 문자열 열은 None(행 그대로)."""
+    if isinstance(col.dtype, pd.CategoricalDtype):
+        used = col.cat.remove_unused_categories()
+        return used.value_counts(sort=False).reindex(used.cat.categories).to_numpy()
+    return None
+
+
+def _weighted_mean(flags, weights):
+    if weights is None:
+        return float(flags.mean())
+    return float((flags.to_numpy() * weights).sum() / weights.sum())
+
+
 def _check_types(df):
     """숫자나 날짜처럼 보이는데 문자열(object·category)로 저장된 컬럼을 찾습니다."""
     code = '''# [목적] 컬럼별 자료형 확인 + 문자열로 저장된 숫자/날짜 컬럼 찾기
@@ -77,8 +91,9 @@ for col in df.select_dtypes(include=["object", "string", "category"]):  # 글자
         s = _text_values(df[col]).str.replace(",", "")
         if s.empty:
             continue
-        num_ratio = pd.to_numeric(s, errors="coerce").notna().mean()
-        date_ratio = pd.to_datetime(s, errors="coerce", format="mixed").notna().mean()
+        w = _row_weights(df[col])                       # category는 고유값마다 행 수로 가중 → 행 기준 비율
+        num_ratio = _weighted_mean(pd.to_numeric(s, errors="coerce").notna(), w)
+        date_ratio = _weighted_mean(pd.to_datetime(s, errors="coerce", format="mixed").notna(), w)
         if num_ratio >= 0.9 and _looks_like_code(col, s):
             # 우편번호·ID·전화번호 같은 코드는 숫자로 바꾸면 앞자리 0이 사라지고, 글자가 섞인 값은 결측이 됩니다.
             issues.append(f"{col}: 값의 {num_ratio:.0%}가 숫자지만 코드(우편번호·ID 등)로 보입니다 "

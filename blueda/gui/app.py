@@ -29,7 +29,12 @@ HELP = [
     ("clear", "결과 세션 비우기"),
     ("theme dark / theme light", "화면 모드 바꾸기"),
     ("rows", "지금 조건에 맞는 행 수"),
+    ("dates", "날짜 문자열 열을 날짜형으로 바꾸는 창 열기"),
 ]
+
+
+# 열 선택과 상관없이 모든 열로 실행하는 분석
+ALL_COLUMN_METHODS = ("check", "variable_types")
 
 
 class SettingsDialog(QDialog):
@@ -120,13 +125,14 @@ class SettingsDialog(QDialog):
 
 
 class ColumnChooser(QDialog):
-    """메모리가 부족할 때 일부 열만 읽도록 고르는 창."""
+    """열을 체크해서 고르는 창. 기본은 '메모리가 부족할 때 일부 열만 읽기'이고, 날짜 변환에도 씁니다."""
 
-    def __init__(self, columns, parent=None):
+    def __init__(self, columns, parent=None, title="읽을 열 고르기",
+                 message="분석에 필요한 열만 고르면 메모리를 아낄 수 있습니다.", ok_text=None, cancel_text=None):
         super().__init__(parent)
-        self.setWindowTitle("읽을 열 고르기")
+        self.setWindowTitle(title)
         lay = QVBoxLayout(self)
-        lay.addWidget(label("분석에 필요한 열만 고르면 메모리를 아낄 수 있습니다.", None, True))
+        lay.addWidget(label(message, None, True))
         self.list = QListWidget()
         for c in columns:
             it = QListWidgetItem(str(c))
@@ -136,6 +142,10 @@ class ColumnChooser(QDialog):
             self.list.addItem(it)
         lay.addWidget(self.list)
         btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        if ok_text:
+            btns.button(QDialogButtonBox.Ok).setText(ok_text)
+        if cancel_text:
+            btns.button(QDialogButtonBox.Cancel).setText(cancel_text)
         btns.accepted.connect(self.accept)
         btns.rejected.connect(self.reject)
         lay.addWidget(btns)
@@ -357,13 +367,52 @@ class MainWindow(QMainWindow):
         self.log("SUCCESS", f"불러오기  {os.path.basename(self.info.path)}  {len(self.df):,}행 × {self.df.shape[1]}열  ({self.load_detail})")
         self.stack.setCurrentWidget(m)
         self.choose_method("describe")
+        self.offer_date_conversion()
+
+    # ------------------------------------------------------------------ 날짜형 변환 (사용자 선택)
+    def offer_date_conversion(self, announce_none=False):
+        """날짜 문자열 열이 있으면 바꿀 열을 고르는 창을 띄웁니다. 창은 화면을 막지 않습니다(open)."""
+        if self.bd is None:
+            return
+        cands = self.bd.date_candidates()
+        if not cands:
+            if announce_none:
+                self.log("INFO", "날짜 문자열로 보이는 열이 없습니다.")
+            return
+        dlg = ColumnChooser(
+            cands, self, title="날짜형으로 바꾸기",
+            message="아래 열은 날짜처럼 보이지만 글자로 저장돼 있습니다.\n"
+                    "날짜형으로 바꾸면 기간 필터와 월별 집계를 쓸 수 있습니다.\n"
+                    "코드(예: 20230103이 주문번호)라면 체크를 빼세요.",
+            ok_text="바꾸기", cancel_text="그대로 두기")
+        dlg.finished.connect(lambda code: self._dates_chosen(dlg, code))
+        self.date_dialog = dlg
+        dlg.open()
+
+    def _dates_chosen(self, dlg, code):
+        chosen = dlg.chosen() if code == QDialog.Accepted else []
+        if not chosen:
+            self.log("INFO", "날짜형 변환을 건너뛰었습니다. 나중에 'dates' 명령으로 다시 열 수 있습니다.")
+            return
+        r = self.bd.convert_dates(chosen)
+        self._log_result(r, len(self.bd.results) - 1)
+        self.main.tabs.show_result(r)
+        if r.status == "SUCCESS":
+            for c in chosen:
+                self.kinds[c] = "날짜"
+            self.main.filters.set_data(self.df, self.kinds, self.cfg.dropdown_max_values)
+            self._refresh_data_tab()
 
     # ------------------------------------------------------------------ 범위·메뉴·점검
     def current_scope(self, for_method=None, params=None):
         m = self.main
         selected = m.columns.selected()
         cols = selected or [c for c, k in self.kinds.items() if k not in ("텍스트",)]
-        if for_method is not None and for_method.params:
+        if for_method is not None and getattr(for_method, "key", None) in ALL_COLUMN_METHODS:
+            # 전처리 점검·변수 종류는 고른 열과 상관없이 모든 열을 봅니다.
+            # 일부 열만 보면 ID 열이 빠져 다른 행이 중복처럼 보이는 등 판단이 틀어지기 때문입니다.
+            cols = list(self.df.columns)
+        elif for_method is not None and for_method.params:
             cols = m.bar.needed_columns() or cols
         return AnalysisScope(columns=list(cols), filters=list(m.filters.filters), query=m.filters.query)
 
@@ -493,6 +542,8 @@ class MainWindow(QMainWindow):
             self.ui["theme"] = low.split()[1]
             self.apply_theme()
             self._save_settings()
+        elif low == "dates" and self.bd is not None:
+            self.offer_date_conversion(announce_none=True)
         elif low == "rows" and self.df is not None:
             self.log("INFO", f"조건에 맞는 행: {self.current_scope().count_rows(self.df):,} / {len(self.df):,}")
         elif low == "show" and self.bd and self.bd.results:
