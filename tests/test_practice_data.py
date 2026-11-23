@@ -175,15 +175,37 @@ def test_code_log_runs_standalone(store, tmp_path):
 
 
 # ── 알려진 문제 (고치면 xfail → 통과로 바뀜) ─────────────────────────────
-@pytest.mark.xfail(strict=True, reason="0/1·이산값 열을 이상치로 잡는 오판 (수정 예정)")
 @pytest.mark.parametrize("fx", ["ai4i", "store"])
-def test_known_no_false_preprocess_need(fx, request):
+def test_no_false_outliers_on_binary_or_discrete(fx, request):
+    """0/1·이산값 열은 이상치 후보로 잡지 않는다 (v0.4.1 수정)"""
     bd, raw = request.getfixturevalue(fx)
-    r = _quiet(bd.check)
-    t = r.tables["전처리 점검"]
-    txt = str(t.loc["4. 이상치", "내용"])
-    for c in ["Machine failure", "TWF", "Discount"]:
+    r = _quiet(bd.preprocess_check)
+    txt = str(r.tables["전처리 점검"].loc["4. 이상치", "내용"])
+    for c in ["Machine failure", "TWF", "RNF", "Discount", "Quantity", "UDI", "Row ID"]:
         assert f"{c}:" not in txt
+    assert "Rotational speed [rpm]:" in txt or "Sales:" in txt     # 연속형 열은 계속 점검
+
+
+def test_outliers_only_is_not_preprocessing_needed(ai4i):
+    """AI4I는 이상치 후보만 있으므로 '전처리 필요'가 아니라 '확인 권장'"""
+    bd, raw = ai4i
+    r = _quiet(bd.preprocess_check)
+    assert "전처리 필요" not in r.message
+    assert r.tables["전처리 점검"].loc["4. 이상치", "상태"] == "확인 권장"
+
+
+def test_checks_still_work_after_dtype_optimization(store):
+    """화면처럼 메모리 최적화(category 변환) 후에도 타입·범주 불일치 점검이 동작해야 한다 (v0.4.1 수정)"""
+    from blueda.loader import optimize_dtypes
+    from blueda.preprocess_check import check_result
+    bd, raw = store
+    df, changed = optimize_dtypes(raw.copy())
+    assert "Region" in changed["category"]
+    df["Region"] = df["Region"].cat.add_categories(["west "])
+    df.loc[0, "Region"] = "west "                          # 일부러 넣은 표기 오류
+    t = check_result(df).tables["전처리 점검"]
+    assert "Order Date" in t.loc["1. 타입", "내용"]          # 날짜 문자열 안내
+    assert "Region" in t.loc["5. 범주 불일치", "내용"]       # 표기 오류 감지
 
 
 @pytest.mark.xfail(strict=True, reason="기술통계에 ID 후보 열(UDI, Row ID)이 포함됨 (수정 예정)")
