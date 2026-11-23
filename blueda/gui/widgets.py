@@ -2,10 +2,10 @@
 
 import pandas as pd
 from PySide6.QtCore import QPoint, QRect, QSize, Qt, QThread, QTimer, Signal
-from PySide6.QtGui import QDoubleValidator, QFont, QGuiApplication, QIntValidator
+from PySide6.QtGui import QColor, QDoubleValidator, QFont, QGuiApplication, QIntValidator
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel,
-    QLayout, QLineEdit, QListWidget, QListWidgetItem, QMenu, QPlainTextEdit, QPushButton, QScrollArea,
+    QLayout, QLineEdit, QListWidget, QListWidgetItem, QMenu, QPlainTextEdit, QPushButton, QScrollArea, QStackedWidget,
     QSizePolicy, QTabWidget, QTableView, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -251,6 +251,18 @@ class ColumnPanel(QWidget):
             if c is not None and it.checkState(0) == Qt.Checked:
                 out.append(c)
         return out
+
+    def set_selected(self, columns):
+        """히스토리 복원: 이 열들만 체크합니다."""
+        want = set(columns)
+        self._updating = True
+        for i in range(self.tree.topLevelItemCount()):
+            it = self.tree.topLevelItem(i)
+            c = it.data(0, Qt.UserRole)
+            if c is not None:
+                it.setCheckState(0, Qt.Checked if str(c) in want or c in want else Qt.Unchecked)
+        self._updating = False
+        self._emit()
 
     def _set_all(self, on):
         self._updating = True
@@ -671,6 +683,14 @@ class FilterBar(QWidget):
         self._rebuild()
         self.changed.emit()
 
+    def set_state(self, filters, query=""):
+        """히스토리 복원: 필터와 직접 입력 조건을 한 번에 바꿉니다."""
+        self.filters = list(filters)
+        self.query = query or ""
+        if hasattr(self, "direct"):
+            self.direct.setText(self.query)
+        self._changed()
+
     def _remove(self, i):
         self.filters.pop(i)
         self._changed()
@@ -762,6 +782,10 @@ class MultiColumnButton(QPushButton):
     def set_options(self, options):
         self.options = list(options)
         self.columns = [c for c in self.columns if c in self.options]
+        self._label()
+
+    def set_columns(self, cols):
+        self.columns = [c for c in cols if c in self.options]
         self._label()
 
     def _label(self):
@@ -910,6 +934,24 @@ class AnalysisBar(QWidget):
         if c is not None:
             for v in df[c].value_counts().head(200).index:
                 vw.addItem(str(v), v)
+
+    def set_params(self, params):
+        """히스토리 복원: 저장된 값으로 칸을 채웁니다. 지금 파일에 없는 값은 건너뜀."""
+        for name in [n for n, (p, *_r) in self.widgets.items() if p.kind == M.CHOICE] + \
+                [n for n, (p, *_r) in self.widgets.items() if p.kind != M.CHOICE]:
+            if name not in params:                # 차트 종류(선택지)를 먼저 맞춰야 필요한 칸이 보임
+                continue
+            p, w, _ = self.widgets[name]
+            v = params[name]
+            if isinstance(w, MultiColumnButton):
+                w.set_columns(v or [])
+            elif isinstance(w, QComboBox):
+                i = w.findData(v)
+                if i >= 0:
+                    w.setCurrentIndex(i)
+            elif v is not None:
+                w.setText(str(v))
+        self._changed()
 
     def _raw_params(self):
         out = {}
@@ -1192,21 +1234,50 @@ class ResultTabs(QTabWidget):
 class SessionPanel(QFrame):
     resultClicked = Signal(int)
     command = Signal(str)
+    historyClicked = Signal(int)       # 히스토리 목록에서 누른 기록 번호 (store.entries 안의 위치)
+    historyClearRequested = Signal()
 
     def __init__(self):
         super().__init__()
         self.setObjectName("SessionBox")
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(12, 6, 12, 6)
-        lay.setSpacing(0)
-        self.list = QListWidget()
-        self.list.setObjectName("Session")
+        lay.setContentsMargins(12, 4, 12, 6)
+        lay.setSpacing(2)
         mono = QFont()
         mono.setFamilies(theme.MONO_FAMILIES)
         mono.setPointSize(10)
+        # 위쪽 전환: 결과 세션 | 히스토리
+        tabs = QHBoxLayout()
+        tabs.setSpacing(4)
+        self.tab_session = button("결과 세션", "console_tab", checkable=True)
+        self.tab_history = button("히스토리", "console_tab", checkable=True)
+        self.tab_session.setChecked(True)
+        for i, b in enumerate((self.tab_session, self.tab_history)):
+            b.clicked.connect(lambda _=False, i=i: self.show_page(i))
+            tabs.addWidget(b)
+        tabs.addStretch(1)
+        self.history_info = QLabel("")
+        self.history_info.setObjectName("Prompt")
+        self.history_clear = button("전체 삭제", "console_link")
+        self.history_clear.clicked.connect(self.historyClearRequested)
+        tabs.addWidget(self.history_info)
+        tabs.addWidget(self.history_clear)
+        lay.addLayout(tabs)
+        self.pages = QStackedWidget()
+        self.list = QListWidget()
+        self.list.setObjectName("Session")
         self.list.setFont(mono)
         self.list.setToolTip("결과 줄을 누르면 그 결과를 다시 봅니다")
-        lay.addWidget(self.list, 1)
+        self.history = QListWidget()
+        self.history.setObjectName("Session")
+        self.history.setFont(mono)
+        self.history.setToolTip("기록을 누르면 그때의 조건과 분석 설정으로 되돌립니다 (실행은 직접)")
+        self.history.itemClicked.connect(lambda it: self.historyClicked.emit(it.data(Qt.UserRole))
+                                         if it.data(Qt.UserRole) is not None else None)
+        self.pages.addWidget(self.list)
+        self.pages.addWidget(self.history)
+        lay.addWidget(self.pages, 1)
+        self.show_page(0)
         row = QHBoxLayout()
         prompt = QLabel(">")
         prompt.setObjectName("Prompt")
@@ -1240,6 +1311,40 @@ class SessionPanel(QFrame):
         self.list.setItemWidget(it, line)
         self.list.scrollToBottom()
         return it
+
+    def show_page(self, i):
+        self.pages.setCurrentIndex(i)
+        self.tab_session.setChecked(i == 0)
+        self.tab_history.setChecked(i == 1)
+        self.history_info.setVisible(i == 1)
+        self.history_clear.setVisible(i == 1)
+        if i == 1:
+            QTimer.singleShot(0, self.history.scrollToBottom)   # 화면에 그려진 뒤 최신 기록으로
+
+    def set_history(self, rows, info=""):
+        """rows: [(번호, 시각, 종류, 내용)] 최근 것이 아래. info: 오른쪽 위 안내 (건수·용량)"""
+        import html
+        self.history.clear()
+        if not rows:
+            it = QListWidgetItem("기록이 없습니다. 필터를 적용하거나 분석을 실행하면 여기에 남습니다.")
+            it.setForeground(QColor(theme.CONSOLE_TIME))
+            self.history.addItem(it)
+        for idx, when, kind, text in rows:
+            line = QLabel(
+                f"<span style='color:{theme.CONSOLE_TIME}'>{html.escape(when)}</span>&nbsp;&nbsp;"
+                f"<span style='color:#8FB4E3'>{html.escape(kind).ljust(6, chr(12288))}</span>&nbsp;"
+                f"<span style='color:{theme.CONSOLE_TEXT}'>{html.escape(text)}</span>")
+            line.setFont(self.history.font())
+            line.setTextFormat(Qt.RichText)
+            line.setAttribute(Qt.WA_TransparentForMouseEvents)
+            it = QListWidgetItem()
+            it.setData(Qt.UserRole, idx)
+            it.setToolTip(text)
+            it.setSizeHint(QSize(10, line.sizeHint().height() + 4))
+            self.history.addItem(it)
+            self.history.setItemWidget(it, line)
+        self.history.scrollToBottom()
+        self.history_info.setText(info)
 
     def _click(self, it):
         idx = it.data(Qt.UserRole)

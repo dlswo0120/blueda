@@ -109,6 +109,11 @@ def stylesheet(dark=False):
     QListWidget#Session::item {{ min-height: 20px; padding: 0 4px; }}
     QListWidget#Session::item:selected {{ background: #222936; color: {CONSOLE_TEXT}; }}
     QFrame#SessionBox {{ background: {CONSOLE_BG}; }}
+    QPushButton[kind="console_tab"] {{ background: transparent; border: none; border-bottom: 2px solid transparent;
+        border-radius: 0; color: {CONSOLE_TIME}; padding: 2px 6px; font-size: 12px; min-height: 18px; }}
+    QPushButton[kind="console_tab"]:checked {{ color: {CONSOLE_TEXT}; border-bottom: 2px solid #8FB4E3; }}
+    QPushButton[kind="console_link"] {{ background: transparent; border: none; color: #8FB4E3;
+        padding: 0 4px; font-size: 12px; min-height: 18px; }}
     QLineEdit#Command {{ background: transparent; border: none; color: #E6EBF2; }}
     QLabel#Prompt {{ color: {CONSOLE_TIME}; }}
     QSplitter::handle {{ background: {bg}; }}

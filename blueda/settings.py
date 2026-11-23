@@ -18,6 +18,8 @@ EDITABLE = [
     ("z_threshold", "|z| 기준", "이 값보다 멀면 이상값 후보 (관례 3)", 1.0, 6.0, 0.5),
     ("chart_sample_size", "차트 표본 크기", "행이 이보다 많으면 차트만 표본으로 그림", 1_000, 2_000_000, 10_000),
     ("category_max_unique", "범주 판단 고유값 수", "숫자 열 고유값이 이 이하면 범주일 수 있음", 2, 100, 1),
+    ("history_max_entries", "히스토리 보관 건수", "이보다 많으면 오래된 기록부터 지움", 50, 10_000, 50),
+    ("history_max_days", "히스토리 보관 기간(일)", "이보다 오래된 기록은 시작할 때 지움", 1, 365, 1),
 ]
 
 
@@ -43,7 +45,7 @@ def load_settings(path=None):
         cfg = BluedaConfig(**cfg_values)
     except (TypeError, ValueError):
         cfg = BluedaConfig()
-    ui = {"theme": "light", "recent_files": []}
+    ui = {"theme": "light", "recent_files": [], "history_enabled": True, "history_mask": True}
     ui.update({k: v for k, v in data.get("ui", {}).items() if k in ui})
     return cfg, ui
 

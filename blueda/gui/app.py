@@ -8,8 +8,8 @@ from datetime import datetime
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QApplication, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout, QLineEdit,
-    QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox, QRadioButton, QStackedWidget, QVBoxLayout,
+    QApplication, QCheckBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout, QLineEdit,
+    QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox, QRadioButton, QScrollArea, QStackedWidget, QVBoxLayout,
     QWidget,
 )
 
@@ -21,7 +21,9 @@ from ..scope import AnalysisScope
 from ..settings import EDITABLE, load_settings, save_settings
 from . import theme
 from .pages import MainPage, StartPage
+from ..history import HistoryStore, describe_entry, same_file_name
 from ..issues import NEED, collect_issues, summary
+from ..settings import settings_path as default_settings_path
 from .widgets import Popup, Worker, button, label, repolish
 
 HELP = [
@@ -31,6 +33,7 @@ HELP = [
     ("theme dark / theme light", "화면 모드 바꾸기"),
     ("rows", "지금 조건에 맞는 행 수"),
     ("dates", "날짜 문자열 열을 날짜형으로 바꾸는 창 열기"),
+    ("history", "조회 히스토리 보기 (기록을 누르면 그때 조건으로 되돌림)"),
 ]
 
 
@@ -77,7 +80,31 @@ class SettingsDialog(QDialog):
         logrow.addWidget(self.log_dir, 1)
         logrow.addWidget(change)
         form.addRow("로그 저장 위치", logrow)
-        lay.addLayout(form)
+        hist = QVBoxLayout()
+        hist.setSpacing(2)
+        self.hist_on = QCheckBox("조회 히스토리 기록")
+        self.hist_on.setChecked(ui.get("history_enabled", True))
+        self.hist_mask = QCheckBox("필터 값 가리기 (권장)")
+        self.hist_mask.setChecked(ui.get("history_mask", True))
+        hist.addWidget(self.hist_on)
+        hist.addWidget(self.hist_mask)
+        note = label("가리면 고른 값(예: 이름)이 기록 파일에 원문으로 남지 않습니다. "
+                     "같은 파일을 열었을 때만 복원됩니다.", "sub", True)
+        note.setMinimumWidth(300)
+        hist.addWidget(note)
+        form.addRow("히스토리", hist)
+        # 항목이 많아 창이 길어지므로, 화면이 작거나 배율이 커도 넘치지 않게 스크롤 영역에 넣음
+        holder = QWidget()
+        holder.setLayout(form)
+        scroll = QScrollArea()
+        scroll.setWidget(holder)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        avail = QApplication.primaryScreen().availableGeometry().height() if QApplication.primaryScreen() else 900
+        scroll.setMinimumHeight(min(holder.sizeHint().height() + 8, int(avail * 0.7)))
+        scroll.setMinimumWidth(holder.sizeHint().width() + scroll.verticalScrollBar().sizeHint().width() + 8)
+        lay.addWidget(scroll, 1)
         lay.addWidget(label("기준값들은 관례입니다. 바꾸면 이후 실행하는 분석부터 적용됩니다.", "sub", True))
         self.error = label("", "warn", True)
         self.error.hide()
@@ -123,6 +150,8 @@ class SettingsDialog(QDialog):
             setattr(self.cfg, key, v)
         self.cfg.log_dir = self.log_dir.text()
         self.ui["theme"] = "dark" if self.dark.isChecked() else "light"
+        self.ui["history_enabled"] = self.hist_on.isChecked()
+        self.ui["history_mask"] = self.hist_mask.isChecked()
 
 
 class ColumnChooser(QDialog):
@@ -161,6 +190,11 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.settings_path = settings_path
         self.cfg, self.ui = load_settings(settings_path)
+        self._restoring = False
+        self.last_run = None
+        self.history = HistoryStore(os.path.dirname(settings_path or default_settings_path()),
+                                    self.cfg.history_max_entries, self.cfg.history_max_days,
+                                    self.ui.get("history_mask", True))
         self.cfg.print_code = False
         self.bd = None
         self.df = None
@@ -193,7 +227,9 @@ class MainWindow(QMainWindow):
         m = self.main
         m.columns.selectionChanged.connect(self._scope_changed)
         m.columns.typeChangeRequested.connect(self._change_type)
-        m.filters.changed.connect(self._scope_changed)
+        m.filters.changed.connect(self._filters_changed)
+        m.session.historyClicked.connect(self.restore_history)
+        m.session.historyClearRequested.connect(self.clear_history)
         m.menu.methodChosen.connect(self.choose_method)
         m.bar.paramsChanged.connect(self._precheck)
         m.bar.runRequested.connect(self.run_analysis)
@@ -201,6 +237,103 @@ class MainWindow(QMainWindow):
         m.session.resultClicked.connect(self._reopen)
         m.session.command.connect(self._command)
         self.apply_theme()
+        self.refresh_history_panel()
+
+    def closeEvent(self, event):
+        """창을 닫을 때 뒤에서 도는 작업을 멈추고 끝날 때까지 기다립니다 (강제 종료 방지)."""
+        for w in [self.worker] + list(getattr(self, "_bg_workers", [])):
+            if w is not None and w.isRunning():
+                w.cancel()
+                w.wait(5000)
+        super().closeEvent(event)
+
+    # ------------------------------------------------------------------ 조회 히스토리
+    def _file_name(self):
+        return os.path.basename(self.info.path) if self.info else None
+
+    def record(self, kind, text, rows=None, state=None):
+        """확정한 동작 한 줄 기록. 복원 중이거나 설정에서 끈 경우에는 남기지 않음."""
+        if self._restoring or not self.ui.get("history_enabled", True):
+            return
+        try:
+            self.history.add(kind, text, rows=rows, file=self._file_name(), state=state)
+        except OSError as e:
+            self.log("FAIL", f"히스토리를 저장하지 못했습니다: {e}")
+            return
+        self.refresh_history_panel()
+
+    def _state(self, method=None, params=None):
+        value_params = ()
+        if method in M.BY_KEY:
+            value_params = tuple(p.name for p in M.BY_KEY[method].params if p.kind == M.VALUE)
+        f = self.main.filters
+        return self.history.state(f.filters, f.query, self.main.columns.selected(), method, params, value_params)
+
+    def refresh_history_panel(self):
+        rows = [(i, *describe_entry(e)) for i, e in enumerate(self.history.entries)]
+        size = self.history.size_bytes()
+        info = f"{len(rows)}건 · {size / 1024:,.0f}KB" if rows else ""
+        if self.history.mask:
+            info += ("  · " if info else "") + "값 가림"
+        self.main.session.set_history(rows, info)
+
+    def restore_history(self, idx):
+        """기록을 누르면 그때의 필터·열·분석 설정으로 되돌립니다. 실행은 사용자가 직접 누릅니다."""
+        if not (0 <= idx < len(self.history.entries)):
+            return
+        e = self.history.entries[idx]
+        st = e.get("state")
+        if self.df is None:
+            self.log("INFO", "파일을 연 뒤에 기록을 되돌릴 수 있습니다.")
+            return
+        if not st:
+            self.log("INFO", f"되돌릴 조건이 없는 기록입니다: {e.get('text', '')}")
+            return
+        if not same_file_name(e, self._file_name()):
+            self.log("INFO", f"다른 파일({e.get('file')})의 기록입니다. 그 파일을 연 뒤 다시 누르세요.")
+            return
+        filters, problems = self.history.unpack_filters(st.get("filters", []), self.df)
+        self._restoring = True
+        try:
+            self.main.filters.set_state(filters, st.get("query", ""))
+            cols = [c for c in st.get("columns", []) if c in self.df.columns]
+            if cols:
+                self.main.columns.set_selected(cols)
+            method = st.get("method")
+            if method in M.BY_KEY:
+                self.choose_method(method)
+                params = self.history.unpack_params(st.get("params"), self.df, {})
+                self.main.bar.set_params(params)
+        finally:
+            self._restoring = False
+        self._scope_changed()
+        self.log("INFO", f"기록 되돌림: {e.get('text', '')}" + ("  (실행 버튼을 누르면 다시 계산합니다)" if st.get("method") else ""))
+        for p in problems:
+            self.log("INFO", "  " + p)
+        if st.get("query_hidden"):
+            self.log("INFO", "  직접 입력 조건은 값 가림 모드라 저장하지 않아 되돌리지 않았습니다.")
+
+    def clear_history(self):
+        if QMessageBox.question(self, "히스토리 삭제", "조회 히스토리를 모두 지울까요? 되돌릴 수 없습니다.") \
+                != QMessageBox.Yes:
+            return
+        self.history.clear()
+        self.refresh_history_panel()
+        self.log("INFO", "조회 히스토리를 모두 지웠습니다.")
+
+    def _filters_changed(self):
+        self._scope_changed()
+        if self.df is None:
+            return
+        f = self.main.filters
+        parts = [self.history.filter_text(x) for x in f.filters]
+        if f.query:
+            parts.append("직접 입력 조건" if self.history.mask else f.query)
+        try:
+            n = self.current_scope().count_rows(self.df)
+        except Exception:
+            n = None
+        self.record("filter", " · ".join(parts) or "조건 모두 해제", n, self._state())
 
     # ------------------------------------------------------------------ 상단 바
     def _header(self):
@@ -270,6 +403,10 @@ class MainWindow(QMainWindow):
             self.apply_theme()
             self._save_settings()
             self.refresh_issues()                       # IQR 배수 등이 바뀌면 이슈도 다시 계산
+            self.history.mask = self.ui.get("history_mask", True)
+            self.history.max_entries = self.cfg.history_max_entries
+            self.history.max_days = self.cfg.history_max_days
+            self.refresh_history_panel()
             self.log("INFO", "설정 저장: 유의수준 {a}, IQR×{k}, |z|>{z}, 차트 표본 {n:,}행".format(
                 a=self.cfg.alpha, k=self.cfg.outlier_iqr_k, z=self.cfg.z_threshold, n=self.cfg.chart_sample_size))
 
@@ -281,7 +418,9 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ 파일 불러오기
     def open_file(self, path):
-        if self.worker and self.worker.isRunning():
+        if self.worker is not None and self.worker.isRunning():
+            # 읽기·분석 스레드가 도는 중에 새 작업을 시작하면 실행 중인 스레드를 잃어 강제 종료될 수 있음
+            self.log("INFO", "진행 중인 작업이 끝난 뒤에 다른 파일을 열어 주세요.")
             return
         try:
             info = detect_file(path)
@@ -364,6 +503,7 @@ class MainWindow(QMainWindow):
         self.bd = Blueda(self.df, config=self.cfg, data_path=self.info.path)
         self.bd.file_info = self.info
         self.bd.log.log("데이터 불러오기", self.load_code, f"{self.df.shape}", self.info.summary())
+        self.record("file", f"{self._file_name()} 열기 · {self.df.shape[1]}열", len(self.df))
         m = self.main
         default = [c for c, k in self.kinds.items() if k in ("수치형", "범주형")]
         m.filters.set_data(self.df, self.kinds, self.cfg.dropdown_max_values)
@@ -384,13 +524,20 @@ class MainWindow(QMainWindow):
         if self.df is None:
             return
         self.issues = []
+        self._issue_gen = getattr(self, "_issue_gen", 0) + 1
+        gen = self._issue_gen
         w = Worker(collect_issues, self.df, self.cfg.outlier_iqr_k, self.cfg.missing_warn_ratio)
-        w.done.connect(self._issues_ready)
+        w.done.connect(lambda issues, g=gen: self._issues_ready(issues, g))
         w.failed.connect(lambda msg: self.log("FAIL", f"이슈 점검 실패: {msg}"))
-        self.issue_worker = w                      # 참조를 잡아 두어야 스레드가 중간에 사라지지 않음
+        # 이전 점검이 아직 돌고 있을 수 있으므로, 끝날 때까지 모든 스레드의 참조를 잡아 둡니다.
+        # (참조를 놓치면 실행 중인 스레드가 지워지면서 프로그램이 강제 종료됨)
+        self._bg_workers = [x for x in getattr(self, "_bg_workers", []) if x.isRunning()] + [w]
+        self.issue_worker = w
         w.start()
 
-    def _issues_ready(self, issues):
+    def _issues_ready(self, issues, gen=None):
+        if gen is not None and gen != self._issue_gen:
+            return                                 # 더 새 점검이 시작됐으면 이전 결과는 버림
         self.issues = issues
         text, level = summary(issues)
         self.issue_btn.setVisible(bool(text))
@@ -469,6 +616,7 @@ class MainWindow(QMainWindow):
             self.main.filters.set_data(self.df, self.kinds, self.cfg.dropdown_max_values)
             self._refresh_data_tab()
             self.refresh_issues()                       # 날짜를 바꿨으니 이슈 다시 계산
+            self.record("dates", "날짜형 변환 · " + ", ".join(map(str, chosen)))
 
     # ------------------------------------------------------------------ 범위·메뉴·점검
     def current_scope(self, for_method=None, params=None):
@@ -551,6 +699,7 @@ class MainWindow(QMainWindow):
     def run_analysis(self, key, params):
         if self.worker and self.worker.isRunning():
             return
+        self.last_run = (key, dict(params))
         method = M.BY_KEY[key]
         scope = self.current_scope(method, params)
         self.bd.scope = scope
@@ -567,6 +716,11 @@ class MainWindow(QMainWindow):
         new = self.bd.results[before:]
         for i, r in enumerate(new, start=before):
             self._log_result(r, i)
+        if new and self.last_run:
+            key, params = self.last_run
+            r = new[-1]
+            n = self.current_scope().count_rows(self.df) if self.df is not None else None
+            self.record("analysis", f"{r.name} [{r.status}] {r.message}"[:140], n, self._state(key, params))
         if new:
             self.main.tabs.show_results(new)
         self._precheck()
@@ -599,7 +753,11 @@ class MainWindow(QMainWindow):
         t = text.strip()
         self.main.session.add("INFO", f"> {t}", datetime.now().strftime("%H:%M:%S"))
         low = t.lower()
-        if low == "help":
+        if low.split(" ")[0] in {c.split(" ")[0] for c, _ in HELP} and low != "history":
+            self.record("command", t)
+        if low == "history":
+            self.main.session.show_page(1)
+        elif low == "help":
             for cmd, desc in HELP:
                 self.log("INFO", f"{cmd:<26} {desc}")
             self.log("INFO", "분석 명령(예: 성별 처리일수 t검정)은 5단계에서 지원합니다.")
@@ -636,6 +794,7 @@ class MainWindow(QMainWindow):
             try:
                 self.bd.export_excel(path)
                 self.log("SUCCESS", f"Excel 저장  {path}")
+                self.record("export", f"Excel 저장 · {os.path.basename(path)}")
             except Exception as e:
                 self.log("FAIL", f"Excel 저장 실패: {e}")
 
@@ -646,12 +805,14 @@ class MainWindow(QMainWindow):
         if d:
             paths = self.bd.export_csv(d)
             self.log("SUCCESS", f"CSV {len(paths)}개 저장  {d}")
+            self.record("export", f"CSV {len(paths)}개 저장")
 
     def save_logs(self):
         if not self._need_results():
             return
         paths = self.bd.save()
         self.log("SUCCESS", "로그 저장  " + " · ".join(os.path.basename(p) for p in paths.values()))
+        self.record("export", "분석 로그 저장")
 
     def report(self):
         self.log("UNSUPPORTED", "보고서(Word·PDF) 만들기는 4단계에서 지원합니다. 지금은 내보내기 → Excel을 쓰세요.")

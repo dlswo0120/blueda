@@ -203,3 +203,35 @@ def test_issue_button_appears(qtbot, win):
         win.show_issues()
         assert win.issue_popup.isVisible()
         win.issue_popup.close()
+
+
+def test_history_records_and_restores(qtbot, win):
+    """필터·분석을 하면 기록이 남고, 기록을 누르면 그때 조건으로 돌아간다 (값은 가려서 저장)"""
+    from blueda.scope import Filter
+    kinds = [e["kind"] for e in win.history.entries]
+    assert kinds[-1] == "file"
+    win.main.filters.filters = [Filter("시도", "in", values=["서울", "부산"])]
+    win.main.filters._changed()
+    e = win.history.entries[-1]
+    assert e["kind"] == "filter" and "시도 in [값 2개]" in e["text"]
+    raw = open(win.history.path, encoding="utf-8").read()
+    assert "서울" not in raw and "부산" not in raw                  # 값 가림
+    win.choose_method("anova")
+    pick(win.main.bar, "group_col", "시도")
+    pick(win.main.bar, "value_col", "처리일수")
+    qtbot.wait(300)
+    run_and_wait(qtbot, win)
+    a = win.history.entries[-1]
+    assert a["kind"] == "analysis" and a["state"]["method"] == "anova"
+    filter_idx = len(win.history.entries) - 2
+    # 조건을 바꾼 뒤 기록을 눌러 되돌리기
+    win.main.filters.set_state([])
+    win.choose_method("describe")
+    n_before = len(win.history.entries)
+    win.restore_history(len(win.history.entries) - 2)            # 방금 분석 기록
+    assert [f.values for f in win.main.filters.filters] == [["서울", "부산"]]
+    assert win.main.bar.method.key == "anova"
+    assert win.main.bar.params()["group_col"] == "시도"
+    assert len(win.history.entries) == n_before                  # 되돌리기 자체는 기록하지 않음
+    win.main.session.show_page(1)
+    assert win.main.session.history.count() == len(win.history.entries)

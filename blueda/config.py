@@ -28,6 +28,8 @@ class BluedaConfig:
     chart_sample_size: int = 100_000           # 이보다 행이 많으면 차트만 표본으로 그림 (통계는 전체)
     category_max_unique: int = 10              # 숫자 열의 고유값이 이 이하면 '코드로 적힌 범주'일 수 있다고 판단
     dropdown_max_values: int = 20              # 범주형 값이 이 이하면 바로 목록, 넘으면 검색 우선
+    history_max_entries: int = 1000            # 조회 히스토리 최대 보관 건수
+    history_max_days: int = 90                 # 조회 히스토리 보관 기간(일)
 
     def __post_init__(self):
         # [목적] 잘못된 검사 이름이 들어오면 바로 알려주기
