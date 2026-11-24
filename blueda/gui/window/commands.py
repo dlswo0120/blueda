@@ -58,6 +58,10 @@ class CommandsMixin:
             self.log("INFO", f"[{r.name}] {r.message}")
             for k, v in r.metrics.items():
                 self.log("INFO", f"  {k}: {v}")
+        elif low in ("show",):
+            self.log("INFO", "아직 실행한 분석이 없습니다. 분석을 실행한 뒤 show로 마지막 결과를 볼 수 있습니다.")
+        elif low in ("rows", "dates"):
+            self.log("INFO", f"파일을 열고 '분석 시작'을 누른 뒤에 {low} 명령을 쓸 수 있습니다.")
         else:
             self.log("UNSUPPORTED", f"'{t}' — 분석 명령 해석은 5단계에서 지원합니다. help로 지금 쓸 수 있는 명령을 보세요.")
 
