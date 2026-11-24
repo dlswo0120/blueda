@@ -303,17 +303,29 @@ print(model.summary())                                    # 계수, 표준오차
     coef["p값"] = p_column(m.pvalues).to_numpy()
     coef.index = ["절편 (b0)", f"{x} (b1)"]
     b0, b1, p1 = m.params.iloc[0], m.params.iloc[1], m.pvalues.iloc[1]
-    import seaborn as sns
+    # 회귀선과 95% 신뢰대는 표와 같은 회귀식(m, 전체 데이터)에서 직접 계산합니다.
+    # (예전에는 seaborn regplot이 무작위 부트스트랩으로 신뢰대를 그려 실행할 때마다 모양이 달랐고,
+    #  표의 신뢰구간과 근거도 달랐습니다.) 점만 큰 데이터일 때 표본으로 그립니다.
     fig, ax = charts.new_figure()
-    sns.regplot(data=charts.sample(d), x=x, y=y, ax=ax, color=charts.PRIMARY, line_kws={"color": "#E07B39"})
-    ax.set_title(f"{y} = {b0:.3f} + {b1:.3f}·{x}  (R² = {m.rsquared:.3f})")
+    pts = charts.sample(d)
+    ax.scatter(pts[x], pts[y], s=12, color=charts.PRIMARY, alpha=0.5 if len(pts) > 2000 else 0.8, linewidths=0)
+    grid = np.linspace(d[x].min(), d[x].max(), 100)
+    pred = m.get_prediction(sm.add_constant(grid, has_constant="add")).summary_frame(alpha=0.05)
+    ax.fill_between(grid, pred["mean_ci_lower"], pred["mean_ci_upper"], color="#E07B39", alpha=0.18, linewidth=0,
+                    label="95% 신뢰대 (평균 예측)")
+    ax.plot(grid, pred["mean"], color="#E07B39", linewidth=2, label="회귀선")
+    ax.set_xlabel(x)
+    ax.set_ylabel(y)
+    ax.legend(loc="best", fontsize=8, frameon=False)
+    sign = "−" if b1 < 0 else "+"          # 기울기가 음수면 "+ -0.049" 대신 "− 0.049"
+    ax.set_title(f"{y} = {b0:.3f} {sign} {abs(b1):.3f}·{x}  (R² = {m.rsquared:.3f})")
     fig.tight_layout()
     charts.plt.close(fig)
     resid_fig = _residual_plot(m)
     return AnalysisResult(
         "단순회귀", SUCCESS,
-        f"{y} = {b0:.4f} + {b1:.4f} × {x}. " + interpret_p(p1, alpha, f"{x}의 기울기 = 0", f"{josa(x, '이/가')} {josa(y, '을/를')} 설명한다"),
-        metrics={"회귀식": f"{y} = {b0:.4f} + {b1:.4f}·{x}", "기울기 b1": round(b1, 4), "기울기 p값": fmt_p(p1),
+        f"{y} = {b0:.4f} {sign} {abs(b1):.4f} × {x}. " + interpret_p(p1, alpha, f"{x}의 기울기 = 0", f"{josa(x, '이/가')} {josa(y, '을/를')} 설명한다"),
+        metrics={"회귀식": f"{y} = {b0:.4f} {sign} {abs(b1):.4f}·{x}", "기울기 b1": round(b1, 4), "기울기 p값": fmt_p(p1),
                  "결정계수 R²": round(m.rsquared, 4), "표본 크기": int(m.nobs)},
         tables={"회귀계수": coef},
         figures={"산점도와 회귀선": fig, "잔차 vs 예측값": resid_fig},

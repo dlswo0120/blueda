@@ -337,7 +337,8 @@ def _scatter(df, x, y, color, agg, date_unit, top_n):
     ok_r = len(data) > 2 and data[x].nunique() > 1 and data[y].nunique() > 1
     r = data[x].corr(data[y]) if ok_r else None
     r_text = f"{r:.3f}" if r is not None else "계산 불가(점 3개 미만 또는 값이 모두 같음)"
-    table = pd.DataFrame({"값": [f"{len(data):,}", r_text if r is None else round(r, 4)]},
+    # 점 개수는 숫자로 둠 (글자로 바꾸면 Excel로 내보낼 때 숫자 계산이 안 됨. 쉼표는 화면이 붙임)
+    table = pd.DataFrame({"값": [len(data), r_text if r is None else round(r, 4)]},
                          index=["점 개수(전체)", "Pearson r (전체)"], dtype=object)
     note = charts.sample_note(len(data))
     if note:

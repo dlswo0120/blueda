@@ -145,3 +145,24 @@ def test_josa_and_p_sentence():
     s = interpret_p(0.0001, 0.05, "H0", "H1이 맞다")
     assert "p < 0.001로 유의수준 0.05보다 작으므로" in s and "< 0.001 <" not in s
     assert "기각하지 못합니다" in interpret_p(0.3, 0.05, "H0", "H1")
+
+
+def test_regression_chart_is_deterministic_and_matches_ols():
+    """회귀 차트가 실행할 때마다 같고(무작위 부트스트랩 없음), 선이 표의 회귀식과 같다 (v0.5.3)"""
+    import hashlib
+    import numpy as np
+    import pandas as pd
+    import statsmodels.api as sm
+    from blueda.bivariate import simple_regression
+    from blueda.result import ChartImage
+    rng = np.random.default_rng(3)
+    df = pd.DataFrame({"x": rng.normal(0, 1, 400)})
+    df["y"] = 2 + 3 * df["x"] + rng.normal(0, 1, 400)
+    h = [hashlib.md5(ChartImage(simple_regression(df, "x", "y").figures["산점도와 회귀선"]).png).hexdigest()
+         for _ in range(2)]
+    assert h[0] == h[1]
+    fig = simple_regression(df, "x", "y").figures["산점도와 회귀선"]
+    line = next(l for l in fig.axes[0].lines if l.get_label() == "회귀선")
+    m = sm.OLS(df["y"], sm.add_constant(df["x"])).fit()
+    xs, ys = line.get_data()
+    np.testing.assert_allclose(ys, m.params["const"] + m.params["x"] * xs, atol=1e-9)

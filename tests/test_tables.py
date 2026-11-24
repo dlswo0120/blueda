@@ -178,3 +178,9 @@ def test_box_log_scale_for_heavy_positive(bd):
     r = chart(d, "상자그림", x="region", y="sales")          # 엔진 함수는 그림 객체를 돌려줌
     assert any("로그 눈금" in n for n in r.notes)
     assert r.figures["상자그림 차트"].axes[0].get_yscale() == "log"
+
+
+def test_scatter_point_count_stays_numeric(bd):
+    """점 개수가 글자가 아니라 숫자 (Excel 내보내기에서 계산 가능해야 함, v0.5.0과 같게)"""
+    t = bd.chart("산점도", x="sales", y="profit").tables["차트 데이터"]
+    assert isinstance(t.loc["점 개수(전체)", "값"], (int, np.integer))
