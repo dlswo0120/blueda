@@ -11,6 +11,7 @@ import pandas as pd
 
 from .limits import ID_MIN_ROWS  # 기준값은 limits.py에서
 from .result import FAIL, SUCCESS, AnalysisResult
+from .safedate import to_dates
 
 NUMERIC, CATEGORICAL, DATETIME, ID, TEXT = "수치형", "범주형", "날짜", "ID 후보", "텍스트"
 KINDS = (NUMERIC, CATEGORICAL, DATETIME, ID, TEXT)
@@ -58,7 +59,7 @@ def infer_kind(s, max_categories=10, text_unique_ratio=0.5):
         return NUMERIC, "숫자 자료형"
     # 문자열 계열
     sample = s.dropna().astype(str)
-    if len(sample) and pd.to_datetime(sample.head(200), errors="coerce", format="mixed").notna().mean() > 0.9:
+    if len(sample) and to_dates(sample.head(200), format="mixed").notna().mean() > 0.9:
         return DATETIME, "문자열이지만 날짜 형식"
     if n > 0 and nunique == n and nunique > max_categories:
         return ID, "모든 값이 다름 → 이름·코드 등 ID일 수 있음"

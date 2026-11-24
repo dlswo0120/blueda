@@ -21,3 +21,7 @@ logs/*
 # 기타
 .DS_Store
 .env
+
+# 테스트 도구가 만드는 폴더 (Hypothesis 실패 예시 저장, 돌연변이 테스트 사본)
+.hypothesis/
+mutants/

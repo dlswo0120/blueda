@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from .result import FAIL, SUCCESS, AnalysisResult
+from .safedate import to_dates
 from .variables import DATETIME, infer_kind
 
 
@@ -24,14 +25,17 @@ def date_candidates(df):
 def _parse(values):
     """문자열 → 날짜. 먼저 빠른 방식(형식 자동 추정), 실패한 값이 있으면 그 값만 여러 형식 허용으로 다시 시도.
     반환: (날짜 Series, 사용한 방식 설명)"""
-    first = pd.to_datetime(values, errors="coerce")
+    first, utc = to_dates(values, report=True)
+    tz_note = " (시간대가 섞여 UTC 기준으로 맞춤)" if utc else ""
     bad = first.isna() & values.notna()
     if not bad.any():
-        return first, "형식 자동 추정"
-    retry = pd.to_datetime(values[bad], errors="coerce", format="mixed")
+        return first, "형식 자동 추정" + tz_note
+    retry, utc2 = to_dates(values[bad], format="mixed", report=True)
+    if utc2 and not utc:
+        tz_note = " (시간대가 섞여 UTC 기준으로 맞춤)"
     first = first.copy()
     first[bad] = retry
-    return first, "형식 자동 추정 + 일부 값은 여러 형식 허용(format='mixed')"
+    return first, "형식 자동 추정 + 일부 값은 여러 형식 허용(format='mixed')" + tz_note
 
 
 def to_datetime_column(s):

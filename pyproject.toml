@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "blueda"
-version = "0.5.3"
+version = "0.5.4"
 description = "전처리 판단부터 분석 로그까지 남기는 EDA 도우미"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -20,7 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 gui = ["PySide6>=6.5"]
-dev = ["pytest>=7", "pytest-qt>=4", "ipykernel"]
+dev = ["pytest>=7", "pytest-qt>=4", "ipykernel", "hypothesis>=6"]   # 테스트 전용 (exe에 들어가지 않음). mutmut는 WSL에서 따로 설치
 
 [project.gui-scripts]
 blueda = "blueda.gui.app:main"
@@ -30,3 +30,17 @@ packages = ["blueda", "blueda.gui", "blueda.gui.widgets", "blueda.gui.window"]
 
 [tool.setuptools.package-data]
 "blueda.gui" = ["assets/*.svg"]
+
+[tool.pytest.ini_options]
+# 한글 테스트 이름(예: [describe-0행])을 \uXXXX로 바꾸지 않고 그대로 씀.
+# 바뀐 이름으로는 테스트를 다시 고를 수 없어서, mutmut가 모든 돌연변이를 '잡음'으로 잘못 셌음 (v0.5.4)
+disable_test_id_escaping_and_forfeit_all_rights_to_community_support = true
+
+# 돌연변이 테스트 (docs/TESTING.md 4절). 단계 마무리 때만, 윈도우는 WSL 안에서: pip install mutmut → mutmut run → mutmut results
+# 대상 모듈은 paths_to_mutate만 바꿔서 돌아가며 측정. 무작위 입력은 고정해서 실행:
+#   HYPOTHESIS_PROFILE=fixed BLUEDA_FUZZ_SEED=0 BLUEDA_FUZZ_TRIALS=5 mutmut run
+[tool.mutmut]
+paths_to_mutate = ["blueda/scope.py"]
+also_copy = ["blueda/"]
+pytest_add_cli_args_test_selection = ["tests/test_scope_rules.py", "tests/test_engine.py", "tests/test_robustness.py", "tests/test_tables.py", "tests/test_stage3_engine.py", "tests/test_properties.py", "tests/test_fuzz.py"]
+pytest_add_cli_args = ["-p", "no:cacheprovider", "-x", "-q"]

@@ -153,3 +153,31 @@ def test_mode_count_ignores_missing():
     r = descriptive.describe_categorical(d, with_charts=False)
     row = r.tables["범주형 요약"].loc["g"]
     assert row["최빈값"] == "a" and row["최빈값 빈도"] == 2 and row["결측"] == 3
+
+
+# ── v0.5.4: 시간대가 섞인 값 (Hypothesis가 찾음: 범주 '001'·'0a-0' 피벗이 멈춤) ──
+MIXED_TZ = ["2024-01-01T09:00+09:00", "2024-02-01T00:00+00:00", "2024-03-15T12:00-05:00", None]
+
+
+def test_mixed_timezone_values_do_not_crash():
+    from blueda import dates, tables
+    from blueda.preprocess_check import check_preprocessing
+    from blueda.scope import AnalysisScope
+    from blueda.variables import infer_kind
+    df = pd.DataFrame({"t": MIXED_TZ, "code": ["A", "001", "0a-0", "B"], "v": [1.0, 2, 3, 4]})
+    infer_kind(df["t"]), infer_kind(df["code"])
+    tables.pivot_table(df, "code", None, "v", "합계")                 # 예전: ValueError Mixed timezones
+    tables.pivot_table(df, "t", None, "v", "개수", "월")
+    n = AnalysisScope(filters=[Filter("t", "between", lo="2024-01-15", hi="2024-12-31")]).count_rows(df)
+    assert n == 2                                                       # UTC 기준 2/1, 3/15
+    check_preprocessing(df)
+    r = dates.convert_dates(df.copy(), ["t"])
+    assert r.status == "SUCCESS" and "UTC" in r.tables["날짜형 변환"].loc["t", "방식"]
+
+
+def test_safedate_keeps_normal_parsing():
+    from blueda.safedate import to_dates
+    s = pd.Series(["2024-01-05", "모름", None])
+    out = to_dates(s)
+    assert out.iloc[0] == pd.Timestamp("2024-01-05") and out.iloc[1:].isna().all()
+    assert to_dates(s, report=True)[1] is False

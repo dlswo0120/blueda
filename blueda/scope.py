@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from .safedate import to_dates
+
 IN, BETWEEN, NOTNA, IQR_INSIDE = "in", "between", "notna", "iqr_inside"
 
 
@@ -58,18 +60,22 @@ class Filter:
         if self.op == BETWEEN:
             s = df[c]
             lo, hi = self.lo, self.hi
+            col, lo_txt, hi_txt = f"df[{c!r}]", repr(lo), repr(hi)   # 코드 로그에 쓸 글자
             if pd.api.types.is_datetime64_any_dtype(s) or isinstance(lo, str) or isinstance(hi, str):
-                s = pd.to_datetime(s, errors="coerce")
+                s = to_dates(s)   # 시간대가 섞여도 멈추지 않음 (safedate.py)
                 lo = pd.Timestamp(lo) if lo not in (None, "") else None
                 hi = pd.Timestamp(hi) if hi not in (None, "") else None
+                # 날짜는 코드 로그도 날짜로 바꿔서 비교 (글자끼리 비교하면 '2024/06/01' 같은 형식에서 결과가 달라짐)
+                col = f"pd.to_datetime(df[{c!r}], errors='coerce')"
+                lo_txt, hi_txt = f"pd.Timestamp({str(self.lo)!r})", f"pd.Timestamp({str(self.hi)!r})"
             m = pd.Series(True, index=df.index)
             parts = []
             if lo is not None:
                 m &= s >= lo
-                parts.append(f"(df[{c!r}] >= {self.lo!r})")
+                parts.append(f"({col} >= {lo_txt})")
             if hi is not None:
                 m &= s <= hi
-                parts.append(f"(df[{c!r}] <= {self.hi!r})")
+                parts.append(f"({col} <= {hi_txt})")
             return m, " & ".join(parts) + f"  # {c} 범위" if parts else "True"
         if self.op == NOTNA:
             cols = self.columns or ([c] if c else list(df.columns))

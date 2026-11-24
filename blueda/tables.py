@@ -14,6 +14,7 @@ from . import charts
 from .limits import (BAR_TOP_N, BOX_MAX_GROUPS, HIST_MAX_BINS, LINE_MARKERS_MAX, LINE_NUMERIC_BIN_FROM,  # 기준값
                      LINE_NUMERIC_BINS, MAX_PIVOT_COLUMNS, MAX_SERIES, VIEW_QUANTILES)
 from .result import SUCCESS, AnalysisResult, UserFacingError
+from .safedate import to_dates
 
 DATE_UNITS = {"일": "D", "주": "W", "월": "M", "분기": "Q", "연": "Y"}
 AGGS = {"합계": "sum", "평균": "mean", "개수": "count", "중앙값": "median", "최솟값": "min", "최댓값": "max"}
@@ -45,7 +46,7 @@ def group_key(df, col, date_unit="월"):
         if pd.api.types.is_datetime64_any_dtype(s):
             expr = f"sub[{col!r}].dt.to_period({unit!r})"
         else:
-            s = pd.to_datetime(s.astype(str) if isinstance(s.dtype, pd.CategoricalDtype) else s, errors="coerce")
+            s = to_dates(s.astype(str) if isinstance(s.dtype, pd.CategoricalDtype) else s)
             expr = f"pd.to_datetime(sub[{col!r}], errors='coerce').dt.to_period({unit!r})"
         return s.dt.to_period(unit).astype(str).where(s.notna()), expr, True
     if isinstance(s.dtype, pd.CategoricalDtype):

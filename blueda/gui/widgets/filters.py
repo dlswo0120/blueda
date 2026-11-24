@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import theme
+from ...safedate import to_dates
 from .base import FlowLayout, Popup, button, label
 from .columns import KIND_ORDER, KIND_TITLE
 
@@ -164,7 +165,7 @@ class RangePopup(Popup):
             if len(x):
                 self.box.addWidget(label(f"데이터 범위 {x.min():,.4g} ~ {x.max():,.4g} · 중앙값 {x.median():,.4g}", "sub", True))
         else:
-            d = pd.to_datetime(series, errors="coerce", format="mixed").dropna()
+            d = to_dates(series, format="mixed").dropna()
             self.lo.setPlaceholderText("2025-01-01")
             self.hi.setPlaceholderText("2025-12-31")
             if len(d):

@@ -19,6 +19,7 @@ TEXT_DTYPES = ["object", "string", "category"]
 
 # 판단 기준값(이산값 기준, 표본 크기, 단위 비율, 숫자·날짜 비율)은 limits.py에 있습니다.
 from .limits import DISCRETE_MAX_UNIQUE, NUMERIC_TEXT_RATIO, TYPE_SAMPLE, UNIT_MIN_RATIO  # noqa: E402
+from .safedate import to_dates  # noqa: E402
 
 # 값 종류가 이 개수 이하인 숫자 열은 IQR 이상치 판단에서 뺍니다 (0/1, 할인율 단계, 수량 등).
 # 값이 몇 단계뿐이면 사분위수가 같은 값에 몰려 정상 값까지 이상치로 잡히기 때문입니다.
@@ -87,7 +88,7 @@ print(df.dtypes)                                       # 컬럼별 자료형
 for col in df.select_dtypes(include=["object", "string", "category"]):  # 글자 값 컬럼만 검사
     s = df[col].dropna().astype(str).str.replace(",", "")
     num_ratio = pd.to_numeric(s, errors="coerce").notna().mean()             # 숫자로 바뀌는 비율
-    date_ratio = pd.to_datetime(s, errors="coerce", format="mixed").notna().mean()  # 날짜로 바뀌는 비율
+    date_ratio = pd.to_datetime(s, errors="coerce", format="mixed", utc=True).notna().mean()  # 날짜로 바뀌는 비율 (utc=True: 시간대가 섞여도 멈추지 않음)
     print(col, round(num_ratio, 2), round(date_ratio, 2))'''
     issues = []
     for col in df.select_dtypes(include=TEXT_DTYPES):
@@ -101,7 +102,7 @@ for col in df.select_dtypes(include=["object", "string", "category"]):  # 글자
             s = df[col].dropna().sample(TYPE_SAMPLE, random_state=0).astype(str).str.replace(",", "")
             w = None
         num_ratio = _weighted_mean(pd.to_numeric(s, errors="coerce").notna(), w)
-        date_ratio = _weighted_mean(pd.to_datetime(s, errors="coerce", format="mixed").notna(), w)
+        date_ratio = _weighted_mean(to_dates(s, format="mixed").notna(), w)
         if num_ratio >= NUMERIC_TEXT_RATIO and _looks_like_code(col, s):
             # 우편번호·ID·전화번호 같은 코드는 숫자로 바꾸면 앞자리 0이 사라지고, 글자가 섞인 값은 결측이 됩니다.
             issues.append(f"{col}: 값의 {num_ratio:.0%}가 숫자지만 코드(우편번호·ID 등)로 보입니다 "

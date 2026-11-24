@@ -9,7 +9,7 @@ from .loader import detect_file, load_file
 from .result import AnalysisResult
 from .scope import AnalysisScope
 
-__version__ = "0.5.3"
+__version__ = "0.5.4"
 __all__ = [
     "detect_file",
     "load_file",

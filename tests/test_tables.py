@@ -184,3 +184,20 @@ def test_scatter_point_count_stays_numeric(bd):
     """점 개수가 글자가 아니라 숫자 (Excel 내보내기에서 계산 가능해야 함, v0.5.0과 같게)"""
     t = bd.chart("산점도", x="sales", y="profit").tables["차트 데이터"]
     assert isinstance(t.loc["점 개수(전체)", "값"], (int, np.integer))
+
+
+@pytest.mark.parametrize("fmt", ["%Y-%m-%d", "%Y/%m/%d", "%m/%d/%Y"])
+def test_code_log_reproduces_same_table(fmt):
+    """코드 로그를 실행하면 오류 없이 도는 것에 그치지 않고 툴과 같은 표가 나와야 한다 (글자 날짜 형식별)"""
+    rng = np.random.default_rng(1)
+    n = 200
+    d = pd.DataFrame({"d": (pd.Timestamp("2024-01-01") + pd.to_timedelta(rng.integers(0, 400, n), unit="D")).strftime(fmt),
+                      "g": rng.choice(["a", "b"], n), "v": rng.normal(0, 1, n)})
+    from blueda import tables
+    for r, var in [(tables.pivot_table(d, "d", "g", "v", "합계", "월"), "table"),
+                   (tables.crosstab(d, "d", "g", "행 %", "월"), "pct")]:
+        ns = {"pd": pd, "np": np, "sub": d.copy(), "df": d.copy()}
+        exec(r.code, ns)
+        tool = list(r.tables.values())[0]
+        assert ns[var].shape == tool.shape
+        assert np.allclose(ns[var].to_numpy(float), tool.to_numpy(float), equal_nan=True, atol=0.06), r.name

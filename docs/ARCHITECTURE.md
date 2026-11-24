@@ -125,4 +125,9 @@ pytest tests/test_robustness.py -q          # 이상 데이터·코드 로그 �
 | test_issues.py, test_history.py | 이슈 목록, 히스토리 저장·가림·복원 |
 | test_robustness.py | 이상 데이터 7종 × 분석 23종, 코드 로그 재실행, 차트 PNG 보관 |
 | test_practice_data.py | 실습 파일로 pandas·numpy 직접 계산값과 비교 |
-| test_gui.py | 화면 동작 (pytest-qt) |
+| test_gui.py, test_gui_regression.py | 화면 동작 (pytest-qt), 리팩터링 전후 같은 동작 |
+| test_scope_rules.py | 분석 범위 규칙과 코드 로그 재현 (필터·행 구간·이상값 경계·날짜 형식) |
+| test_fuzz.py | 무작위 검증: 실행마다 새 시드, 버그를 찾은 시드는 고정 |
+| test_properties.py | 속성 기반 테스트 (Hypothesis) |
+
+테스트를 언제, 어떻게 바꿔 가는지는 [docs/TESTING.md](TESTING.md)에 있습니다 (살충제 패러독스 대응, 돌연변이 테스트, 탐색적 테스트 차터).
