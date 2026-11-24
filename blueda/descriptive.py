@@ -155,6 +155,8 @@ for col in sub.select_dtypes(include=["object", "string", "category", "bool"]):
     if not cols:
         return AnalysisResult("기술통계 - 범주형", FAIL,
                               f"분석 범위에 범주형 열이 없습니다 (고유값 {max_unique}개 이하 기준).", code=code)
+    if len(df) == 0:                                   # 필터 결과 0행: 빈 막대를 그리다 멈추지 않게 먼저 안내
+        return AnalysisResult("기술통계 - 범주형", FAIL, "조건에 맞는 행이 없습니다. 행 조건을 넓혀 주세요.", code=code)
     rows, tables, figures = [], {}, {}
     for c in cols:
         counts = df[c].value_counts(dropna=False)
@@ -163,8 +165,9 @@ for col in sub.select_dtypes(include=["object", "string", "category", "bool"]):
         tables[f"{c} 빈도표"] = pd.DataFrame({"빈도": counts, "비율": ratio.round(4)}).head(top_n)
         rows.append({"열": c, "고유값 수": df[c].nunique(dropna=True), "결측": int(df[c].isna().sum()),
                      "최빈값": ", ".join(map(str, mode[:3])) + (" 외" if len(mode) > 3 else ""),
-                     "최빈값 빈도": int(counts.iloc[0]) if len(counts) else 0})
-        if with_charts:
+                     # 최빈값 빈도는 결측을 뺀 빈도로 센다 (결측이 가장 많으면 counts 첫 줄이 결측이라서)
+                     "최빈값 빈도": int(df[c].value_counts(dropna=True).max()) if df[c].notna().any() else 0})
+        if with_charts and len(counts):
             figures[f"{c} 빈도"] = charts.bar_counts(counts.head(top_n), f"{c} 빈도 (상위 {top_n})")
     overview = pd.DataFrame(rows).set_index("열")
     tables = {"범주형 요약": overview, **tables}

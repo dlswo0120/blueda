@@ -121,3 +121,35 @@ def test_session_results_hold_png_not_figures():
     buf = io.BytesIO()
     img.savefig(buf, format="png", dpi=90)              # 내보내기와 같은 사용법
     assert buf.getvalue() == img.png
+
+
+# ── v0.5.3: 무작위 검증에서 찾은 빈 범위 처리 ──
+def test_zero_row_scope_gives_guidance_not_unexpected_error():
+    """필터 결과가 0행이면 모든 분석이 같은 안내 문장으로 끝난다 (예전: 막대·교차표에서 IndexError)"""
+    import contextlib, io
+    from blueda import Blueda
+    from blueda.config import BluedaConfig
+    from blueda.scope import Filter
+    d = pd.DataFrame({"g": pd.Categorical(["a", "b"] * 5), "h": ["x", "y"] * 5, "v": range(10)})
+    with contextlib.redirect_stdout(io.StringIO()):
+        bd = Blueda(d, BluedaConfig(print_code=False))
+        bd.set_scope(filters=[Filter("g", "in", values=["없는 값"])])
+        rs = [*bd.describe(), bd.crosstab("g", "h", "행 %"), bd.pivot_table("g", "h", "v", "합계")]
+    for r in rs:
+        assert r.status == "FAIL" and "조건에 맞는 행이 없습니다" in r.message, (r.name, r.message)
+
+
+def test_crosstab_without_paired_values():
+    from blueda import tables
+    d = pd.DataFrame({"g": [np.nan, np.nan], "h": ["x", "y"]})
+    with pytest.raises(Exception, match="함께 값이 있는 행이 없어 교차표"):
+        tables.crosstab(d, "g", "h")
+
+
+def test_mode_count_ignores_missing():
+    """결측이 가장 많아도 '최빈값 빈도'는 최빈값의 빈도를 보여 준다"""
+    from blueda import descriptive
+    d = pd.DataFrame({"g": ["a", "a", "b", None, None, None]})
+    r = descriptive.describe_categorical(d, with_charts=False)
+    row = r.tables["범주형 요약"].loc["g"]
+    assert row["최빈값"] == "a" and row["최빈값 빈도"] == 2 and row["결측"] == 3

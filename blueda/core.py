@@ -114,6 +114,8 @@ print(df.head())                                    # 앞 5행 미리보기'''
         """
         try:
             sub, scope_code = self.scope.apply(self.df)
+            if len(sub) == 0:   # 필터 결과 0행: 분석마다 다른 오류가 나지 않게 여기서 한 번에 안내 (화면은 실행 전 점검에서도 막음)
+                raise UserFacingError("조건에 맞는 행이 없습니다. 행 조건을 넓혀 주세요.")
             result = func(sub, **kwargs)
             note = charts.sample_note(len(sub))
             if result.figures and note and note not in result.notes:

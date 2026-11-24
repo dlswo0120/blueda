@@ -127,6 +127,8 @@ def crosstab(df, rows, columns, normalize="개수", date_unit="월"):
     r, r_expr, _ = group_key(df, rows, date_unit)
     c, c_expr, _ = group_key(df, columns, date_unit)
     norm = NORMALIZE.get(normalize, False)
+    if not (r.notna() & c.notna()).any():   # 두 열에 함께 값이 있는 행이 없으면 빈 표가 되어 '전체' 칸을 찾지 못함
+        raise UserFacingError(f"{rows}와 {columns}에 함께 값이 있는 행이 없어 교차표를 만들 수 없습니다.")
     counts = pd.crosstab(r, c, margins=True, margins_name=TOTAL)
     counts.index.name, counts.columns.name = rows, columns
     lines = ["# [목적] 교차표: 두 범주를 함께 세기",
